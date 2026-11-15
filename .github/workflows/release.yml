@@ -50,7 +50,7 @@ jobs:
       - run: cargo test --workspace --locked
         if: matrix.test
       - run: cargo build --release --locked -p bia --target ${{ matrix.target }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: third-party-licenses
 
@@ -125,7 +125,7 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
       # Records that each archive was built here, from this commit.
