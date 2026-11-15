@@ -130,7 +130,7 @@ jobs:
           merge-multiple: true
       # Records that each archive was built here, from this commit.
       # Check one with: gh attestation verify <file> --repo thdtr/bia
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             bia-*.tar.gz
