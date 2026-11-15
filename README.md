@@ -2,10 +2,15 @@
   <img src="assets/logo.svg" width="150" alt="bia">
   <p>A happy minimalist editor.</p>
   <p><a href="README.pt-BR.md">Português</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="CONTRIBUTING.md">Contributing</a></p>
+  <p>
+    <a href="https://github.com/thdtr/bia/actions/workflows/ci.yml"><img src="https://github.com/thdtr/bia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/thdtr/bia/releases/latest"><img src="https://img.shields.io/github/v/release/thdtr/bia" alt="Release"></a>
+    <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-blue" alt="License"></a>
+  </p>
 </div>
 
-BIA is a small code editor written in Rust. File tree, syntax highlighting, Markdown
-preview, themes and one settings file. That's it.
+BIA is a small code editor for Linux, macOS and Windows, written in Rust. File tree,
+syntax highlighting, Markdown preview, themes and one settings file. That's it.
 
 ![BIA editing one of its own source files](docs/screenshot.png)
 
@@ -29,6 +34,16 @@ You can also grab a build from [releases](https://github.com/thdtr/bia/releases)
 `cargo install --git https://github.com/thdtr/bia bia`. To uninstall, add `--uninstall`
 (`... | sh -s -- --uninstall`). On Windows, set `$env:BIA_UNINSTALL=1` and run the
 install command again.
+
+### Warning on first launch
+
+BIA builds aren't signed with a paid certificate. If you download one from the
+releases page, your system may warn you the first time you open it:
+
+- **Windows:** click *More info*, then *Run anyway*.
+- **macOS:** go to *System Settings → Privacy & Security* and click *Open Anyway*.
+
+The install commands above don't trigger this warning.
 
 ## Features
 
@@ -71,13 +86,16 @@ On a Mac, use `Cmd`.
   "font_family": "Fira Code",
   "font_size": 14,
   "line_height": 1.55,
+  "ui_font_family": "Fira Sans",
+  "ui_font_size": 13,
   "theme": "noite",
   "language": "auto",
   "hidden": [".git", "node_modules", "target"]
 }
 ```
 
-BIA ships with Fira Sans and Fira Code, but any installed font works.
+`font_*` is for the editor and `ui_font_*` for the interface. BIA ships with Fira Sans
+and Fira Code, but any installed font works.
 `theme` is `noite`, `dia` or one of yours. `language` is `auto`, `en` or `pt-BR`.
 `hidden` lists names the file tree skips.
 

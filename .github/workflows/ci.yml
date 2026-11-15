@@ -60,6 +60,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --locked
 
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      # The release needs this file, so a problem shows up here first.
+      - run: tools/third_party_licenses.sh
+
   advisories:
     name: Security advisories
     runs-on: ubuntu-latest

@@ -5,14 +5,30 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - run: tools/third_party_licenses.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: third-party-licenses
+          path: THIRD-PARTY-LICENSES.txt
+
   build:
     name: Build ${{ matrix.target }}
+    needs: licenses
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +50,9 @@ jobs:
       - run: cargo test --workspace --locked
         if: matrix.test
       - run: cargo build --release --locked -p bia --target ${{ matrix.target }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: third-party-licenses
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
@@ -41,7 +60,7 @@ jobs:
           name="bia-${{ matrix.target }}"
           mkdir "$name"
           cp "target/${{ matrix.target }}/release/bia" assets/linux/bia.desktop assets/icons/bia.svg \
-             README.md LICENSE-MIT LICENSE-APACHE "$name/"
+             README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES.txt "$name/"
           tar czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
 
@@ -78,7 +97,7 @@ jobs:
           PLIST
           # Ad-hoc signature: required for arm64 binaries to launch at all.
           codesign --force --deep --sign - "$name/BIA.app"
-          cp README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          cp README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES.txt "$name/"
           tar czf "$name.tar.gz" "$name"
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
 
@@ -88,7 +107,7 @@ jobs:
         run: |
           $name = "bia-${{ matrix.target }}"
           New-Item -ItemType Directory $name | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/bia.exe", assets/icons/bia.ico, README.md, LICENSE-MIT, LICENSE-APACHE $name
+          Copy-Item "target/${{ matrix.target }}/release/bia.exe", assets/icons/bia.ico, README.md, LICENSE-MIT, LICENSE-APACHE, THIRD-PARTY-LICENSES.txt $name
           Compress-Archive $name "$name.zip"
           (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
 
@@ -100,11 +119,44 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # sign the attestation
+      attestations: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+      # Records that each archive was built here, from this commit.
+      # Check one with: gh attestation verify <file> --repo thdtr/bia
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            bia-*.tar.gz
+            bia-*.zip
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The section for this version: from its heading to the next
+          # heading or the link list at the end.
+          awk -v heading="## [$version]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && (/^## \[/ || /^\[[^]]+\]: /) { exit }
+            found
+          ' CHANGELOG.md > notes.md
+          grep -q . notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          cat >> notes.md <<EOF
+
+          ---
+
+          To install, follow the [README](https://github.com/${{ github.repository }}#install).
+          Each file has a \`.sha256\` checksum, and
+          \`gh attestation verify <file> --repo ${{ github.repository }}\` shows it was built
+          by this repository's CI.
+          EOF
       - uses: softprops/action-gh-release@v2
         with:
+          name: BIA ${{ github.ref_name }}
+          body_path: notes.md
           files: bia-*
-          generate_release_notes: true

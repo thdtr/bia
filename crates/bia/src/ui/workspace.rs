@@ -197,11 +197,12 @@ fn code_view<'a>(
     let gutter_width = geometry.gutter_width(buffer.line_count);
 
     // The cursor's line number is drawn in the text color, the rest muted.
+    // Clamped so a mismatch between the widget and the gutter can only
+    // misplace the highlight, never crash.
     let current = buffer.cursor_pos().line + 1;
-    let (start, end) = (
-        bia_core::text::gutter_offset(current),
-        bia_core::text::gutter_offset(current + 1).min(buffer.gutter.len()),
-    );
+    let len = buffer.gutter.len();
+    let start = bia_core::text::gutter_offset(current).min(len);
+    let end = bia_core::text::gutter_offset(current + 1).min(len).max(start);
     let numbers: [Span<'a, (), iced::Font>; 3] = [
         span(&buffer.gutter[..start]).color(c.muted),
         span(&buffer.gutter[start..end]).color(c.text),

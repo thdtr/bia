@@ -59,9 +59,20 @@ pub fn create_dir(dir: &Path, name: &str) -> Result<PathBuf, FsError> {
     Ok(path)
 }
 
+/// Whether `path`'s folder has an entry spelled exactly like its name. On a
+/// case-insensitive file system `A.rs` "exists" when only `a.rs` is there,
+/// but it isn't listed.
+fn listed(path: &Path) -> bool {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else { return true };
+    fs::read_dir(dir).map_or(true, |entries| entries.flatten().any(|e| e.file_name() == name))
+}
+
 /// Renames `from` to `new_name` in the same folder. Returns `None` when the
-/// name did not change. Changing only the case (`a.rs` → `A.rs`) is allowed
-/// even on case-insensitive file systems, where the target "exists".
+/// name did not change. Never replaces another file.
+///
+/// Changing only the case (`a.rs` → `A.rs`) works on case-insensitive file
+/// systems too, where the target "exists" because it is the same file. On a
+/// case-sensitive one, an existing `A.rs` is a different file and is kept.
 pub fn rename(from: &Path, new_name: &str) -> Result<Option<PathBuf>, FsError> {
     let new_name = new_name.trim();
     if !valid_name(new_name) {
@@ -73,7 +84,7 @@ pub fn rename(from: &Path, new_name: &str) -> Result<Option<PathBuf>, FsError> {
     }
     let only_case_changed =
         to.to_string_lossy().to_lowercase() == from.to_string_lossy().to_lowercase();
-    if exists(&to) && !only_case_changed {
+    if exists(&to) && (!only_case_changed || listed(&to)) {
         return Err(FsError::Exists(new_name.to_owned()));
     }
     fs::rename(from, &to).map_err(FsError::Io)?;
@@ -123,6 +134,24 @@ mod tests {
         let to = rename(&a, "A.txt").unwrap().unwrap();
         assert_eq!(to.file_name().unwrap(), "A.txt");
         assert!(to.exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn case_rename_never_replaces_another_file() {
+        let dir = scratch("case");
+        let lower = dir.join("makefile");
+        fs::write(&lower, "small").unwrap();
+        let case_insensitive = dir.join("MAKEFILE").exists();
+        if !case_insensitive {
+            fs::write(dir.join("Makefile"), "keep me").unwrap();
+            assert!(matches!(rename(&lower, "Makefile"), Err(FsError::Exists(_))));
+            assert_eq!(fs::read_to_string(dir.join("Makefile")).unwrap(), "keep me");
+            assert_eq!(fs::read_to_string(&lower).unwrap(), "small");
+            fs::remove_file(dir.join("Makefile")).unwrap();
+        }
+        let to = rename(&lower, "Makefile").unwrap().unwrap();
+        assert_eq!(fs::read_to_string(&to).unwrap(), "small");
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -43,8 +43,8 @@ pub const EDITOR_SCROLL_ID: &str = "bia-editor-scroll";
 /// Notices fade on the next interaction after this long.
 const NOTICE_TTL: Duration = Duration::from_secs(4);
 
-pub fn run(path: Option<PathBuf>) -> iced::Result {
-    iced::application(move || Bia::new(path.clone()), Bia::update, ui::view)
+pub fn run(paths: Vec<PathBuf>) -> iced::Result {
+    iced::application(move || Bia::new(paths.clone()), Bia::update, ui::view)
         .default_font(Font::with_name(fonts::UI_FAMILY))
         .title(Bia::title)
         .theme(Bia::theme)
@@ -85,7 +85,7 @@ pub enum Message {
     Shortcut(Shortcut),
     WindowFocused,
     CloseRequested,
-    Quit(QuitChoice),
+    Dialog(Choice),
     OpenSettings,
     EditorScrolled(Viewport),
     Page { down: bool, select: bool },
@@ -99,9 +99,21 @@ pub enum ShelfAction {
     Delete,
 }
 
+/// A question that blocks everything else until it is answered.
+pub enum Dialog {
+    /// Quitting with unsaved files: save all, discard, cancel.
+    Quit,
+    /// Closing a tab with unsaved changes: save, discard, cancel.
+    Close(PathBuf),
+    /// Saving a file that changed on disk since it was opened: overwrite,
+    /// load the disk version, cancel.
+    Conflict(PathBuf),
+}
+
+/// The answer to a [`Dialog`]. What `Save` and `Discard` mean depends on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QuitChoice {
-    SaveAll,
+pub enum Choice {
+    Save,
     Discard,
     Cancel,
 }
@@ -196,12 +208,14 @@ pub struct Bia {
     pub find: Option<Find>,
     pub notice: Option<Notice>,
     pub sidebar: bool,
-    pub quitting: bool,
+    pub dialog: Option<Dialog>,
     editor_viewport: Option<Viewport>,
 }
 
 impl Bia {
-    pub fn new(path: Option<PathBuf>) -> (Self, Task<Message>) {
+    /// `paths` come from the command line. The first folder becomes the
+    /// workspace (or the first file's folder), and files open in tabs.
+    pub fn new(paths: Vec<PathBuf>) -> (Self, Task<Message>) {
         let (settings, settings_error) = Settings::load_or_create(&paths::settings_file());
         let (look, errors) = Look::load(&settings, 0);
         let mut app = Self {
@@ -214,7 +228,7 @@ impl Bia {
             find: None,
             notice: None,
             sidebar: true,
-            quitting: false,
+            dialog: None,
             editor_viewport: None,
         };
         if let Some(e) = settings_error {
@@ -225,22 +239,31 @@ impl Bia {
             app.error(e);
         }
 
-        let mut task = Task::none();
-        if let Some(path) = path {
-            let path = fs::canonicalize(&path).unwrap_or(path);
+        let mut tasks = Vec::new();
+        for path in paths {
+            let path =
+                fs::canonicalize(&path).or_else(|_| std::path::absolute(&path)).unwrap_or(path);
             if path.is_dir() {
-                app.open_root(path);
-            } else if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
-                app.open_root(parent.to_path_buf());
-                if path.is_file() {
-                    task = app.open(path);
-                } else {
-                    let text = app.look.i18n.f("editor.read_error", &[("error", &path.display())]);
-                    app.error(text);
+                if app.tree.is_none() {
+                    app.open_root(path);
                 }
+                continue;
+            }
+            if app.tree.is_none()
+                && let Some(parent) = path.parent().filter(|p| p.is_dir())
+            {
+                app.open_root(parent.to_path_buf());
+            }
+            if path.is_file() {
+                tasks.push(app.open(path));
+            } else {
+                let reason = fs::metadata(&path).err().map(|e| e.to_string()).unwrap_or_default();
+                let error = format!("{}: {reason}", path.display());
+                let text = app.look.i18n.f("editor.read_error", &[("error", &error)]);
+                app.error(text);
             }
         }
-        (app, task)
+        (app, Task::batch(tasks))
     }
 
     pub fn title(&self) -> String {
@@ -381,14 +404,15 @@ impl Bia {
             Message::CloseTab(index) => return self.close_tab(index),
 
             Message::Edit(action) => {
+                // The text stays as it was while a dialog asks about it.
+                if self.dialog.is_some() && action.is_edit() {
+                    return Task::none();
+                }
                 // Clicks and drags happen where the user is looking already.
                 let follow = !matches!(action, Action::Click(_) | Action::Drag(_));
                 let edits = action.is_edit();
-                if let Some(tab) = self.tabs.active_mut() {
-                    tab.close_armed = false;
-                    if let Some(buffer) = tab.buffer_mut() {
-                        buffer.perform(action);
-                    }
+                if let Some(buffer) = self.active_buffer_mut() {
+                    buffer.perform(action);
                 }
                 if edits {
                     self.refresh_find();
@@ -419,7 +443,7 @@ impl Bia {
                 return self.follow_cursor();
             }
             Message::Save => {
-                self.save(self.tabs.active_index());
+                self.save(self.tabs.active_index(), false);
             }
             Message::TogglePreview => {
                 let is_md = self.tabs.active().is_some_and(|t| self.is_markdown(t));
@@ -445,28 +469,21 @@ impl Bia {
             Message::WindowFocused => self.on_focus(),
             Message::CloseRequested => {
                 if self.tabs.any_dirty() {
-                    self.quitting = true;
+                    self.dialog = Some(Dialog::Quit);
                 } else {
                     return iced::exit();
                 }
             }
-            Message::Quit(choice) => match choice {
-                QuitChoice::Cancel => self.quitting = false,
-                QuitChoice::Discard => return iced::exit(),
-                QuitChoice::SaveAll => {
-                    let all_saved = self.tabs.dirty_indices().into_iter().all(|i| self.save(i));
-                    if all_saved {
-                        return iced::exit();
-                    }
-                    self.quitting = false;
-                }
-            },
+            Message::Dialog(choice) => return self.answer(choice),
             Message::OpenSettings => return self.open(paths::settings_file()),
         }
         Task::none()
     }
 
     fn shortcut(&mut self, shortcut: Shortcut) -> Task<Message> {
+        if self.dialog.is_some() && shortcut != Shortcut::Escape {
+            return Task::none();
+        }
         match shortcut {
             Shortcut::OpenFolder => return self.update(Message::OpenFolder),
             Shortcut::Save => return self.update(Message::Save),
@@ -513,8 +530,8 @@ impl Bia {
                 }
             }
             Shortcut::Escape => {
-                if self.quitting {
-                    self.quitting = false;
+                if self.dialog.is_some() {
+                    self.dialog = None;
                 } else if !matches!(self.shelf, Shelf::Hidden) {
                     self.shelf = Shelf::Hidden;
                 } else if self.find.is_some() {
@@ -546,6 +563,7 @@ impl Bia {
             }
             Err(LoadError::Binary) => Body::Unsupported(i18n.t("editor.binary").into()),
             Err(LoadError::NotUtf8) => Body::Unsupported(i18n.t("editor.not_utf8").into()),
+            Err(LoadError::BareCr) => Body::Unsupported(i18n.t("editor.bare_cr").into()),
             Err(LoadError::TooLarge(size)) => Body::Unsupported(i18n.f(
                 "editor.too_large",
                 &[
@@ -574,16 +592,14 @@ impl Bia {
 
     fn close_tab(&mut self, index: usize) -> Task<Message> {
         let Some(tab) = self.tabs.get_mut(index) else { return Task::none() };
-        if tab.is_dirty() && !tab.close_armed {
-            tab.close_armed = true;
-            let name = tab.name();
-            let text = self
-                .look
-                .i18n
-                .f("notice.unsaved_close", &[("name", &name), ("key", &keys::label("Ctrl+W"))]);
-            self.info(text);
+        if tab.is_dirty() {
+            self.dialog = Some(Dialog::Close(tab.path.clone()));
             return Task::none();
         }
+        self.remove_tab(index)
+    }
+
+    fn remove_tab(&mut self, index: usize) -> Task<Message> {
         self.tabs.remove(index);
         if self.tabs.is_empty() {
             self.find = None;
@@ -591,19 +607,68 @@ impl Bia {
         self.restore_scroll()
     }
 
+    fn answer(&mut self, choice: Choice) -> Task<Message> {
+        let Some(dialog) = self.dialog.take() else { return Task::none() };
+        match (dialog, choice) {
+            (_, Choice::Cancel) => {}
+            (Dialog::Quit, Choice::Save) => {
+                let all_saved = self.tabs.dirty_indices().into_iter().all(|i| self.save(i, false));
+                if all_saved {
+                    return iced::exit();
+                }
+            }
+            (Dialog::Quit, Choice::Discard) => return iced::exit(),
+            (Dialog::Close(path), choice) => {
+                if let Some(i) = self.tabs.position(&path)
+                    && (choice == Choice::Discard || self.save(i, false))
+                {
+                    return self.remove_tab(i);
+                }
+            }
+            (Dialog::Conflict(path), Choice::Save) => {
+                if let Some(i) = self.tabs.position(&path) {
+                    self.save(i, true);
+                }
+            }
+            (Dialog::Conflict(path), Choice::Discard) => self.reload(&path),
+        }
+        Task::none()
+    }
+
+    /// Replaces a tab's text with the file on disk, dropping unsaved edits.
+    fn reload(&mut self, path: &Path) {
+        let Some(buffer) =
+            self.tabs.position(path).and_then(|i| self.tabs.get_mut(i)?.buffer_mut())
+        else {
+            return;
+        };
+        match Document::load(path) {
+            Ok(doc) => buffer.reload(doc),
+            Err(e) => {
+                let text = self.look.i18n.f("editor.read_error", &[("error", &e)]);
+                self.error(text);
+            }
+        }
+    }
+
     /// Writes tab `index` to disk. Returns whether it is now saved.
-    fn save(&mut self, index: usize) -> bool {
+    ///
+    /// If the file changed on disk since it was opened, nothing is written
+    /// and the conflict dialog opens, unless `overwrite` is set.
+    fn save(&mut self, index: usize, overwrite: bool) -> bool {
         let Some(tab) = self.tabs.get_mut(index) else { return false };
         let name = tab.name();
         let path = tab.path.clone();
         let Some(buffer) = tab.buffer_mut() else { return false };
 
         if buffer.is_dirty() {
+            let on_disk = document::modified(&path);
+            if !overwrite && on_disk.is_some() && on_disk != buffer.modified {
+                self.dialog = Some(Dialog::Conflict(path));
+                return false;
+            }
             match document::write_atomic(&path, &buffer.encoded()) {
-                Ok(modified) => {
-                    buffer.mark_saved(modified);
-                    tab.close_armed = false;
-                }
+                Ok(modified) => buffer.mark_saved(modified),
                 Err(e) => {
                     let text =
                         self.look.i18n.f("notice.save_failed", &[("name", &name), ("error", &e)]);
@@ -681,7 +746,7 @@ impl Bia {
                 continue;
             }
             if buffer.is_dirty() {
-                buffer.modified = on_disk;
+                // Kept as is. Saving will ask before overwriting.
                 conflicts.push(tree::display_name(&path));
             } else if let Ok(doc) = Document::load(&path) {
                 buffer.reload(doc);

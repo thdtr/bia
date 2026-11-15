@@ -1,5 +1,10 @@
 //! An open text file: the editor widget's content plus BIA's own copy of the
 //! text, undo history and the bookkeeping needed to save it faithfully.
+//!
+//! BIA's copy and the widget must always hold the same text, split into the
+//! same lines. The widget treats a bare `\r` as a line break and BIA does
+//! not, so no `\r` ever reaches either of them: files with one aren't opened
+//! and pasted text is normalized.
 
 use bia_core::document::{Document, LineEnding};
 use bia_core::history::{Change, History};
@@ -18,8 +23,11 @@ pub struct Buffer {
     saved: String,
     history: History,
     pub line_ending: LineEnding,
+    /// The file mixed LF and CRLF when it was opened.
+    pub mixed_endings: bool,
     pub bom: bool,
-    /// Disk modification time we last saw, to notice outside changes.
+    /// Disk modification time as of the last load or save, to notice
+    /// outside changes.
     pub modified: Option<SystemTime>,
     /// Grammar name used for highlighting (also shown in the status bar).
     pub syntax: String,
@@ -44,6 +52,7 @@ impl Buffer {
             text: doc.text,
             history: History::default(),
             line_ending: doc.line_ending,
+            mixed_endings: doc.mixed_endings,
             bom: doc.bom,
             modified: doc.modified,
             syntax,
@@ -93,6 +102,17 @@ impl Buffer {
     }
 
     pub fn perform(&mut self, action: Action) {
+        let action = match action {
+            Action::Edit(Edit::Paste(text)) if text.contains('\r') => {
+                Action::Edit(Edit::Paste(Arc::new(text.replace("\r\n", "\n").replace('\r', "\n"))))
+            }
+            Action::Edit(Edit::Insert('\r')) => Action::Edit(Edit::Enter),
+            Action::Edit(Edit::Unindent) => {
+                self.prepare_unindent();
+                action
+            }
+            other => other,
+        };
         let is_edit = action.is_edit();
         let is_pointer = matches!(action, Action::Click(_) | Action::Drag(_));
         self.content.perform(action);
@@ -101,6 +121,23 @@ impl Buffer {
         } else if is_pointer {
             // Clicking elsewhere ends the current undo group.
             self.history.seal();
+        }
+    }
+
+    /// cosmic-text (under iced) miscounts when Shift+Tab runs with the cursor,
+    /// or the other end of the selection, inside a line's leading
+    /// whitespace: the cursor ends up past the end of the line and the next
+    /// keystroke crashes the editor. Moving those ends to the first
+    /// non-blank character first avoids it.
+    fn prepare_unindent(&mut self) {
+        let indent = |line: usize| {
+            self.content.line(line).map_or(0, |l| l.text.len() - l.text.trim_start().len())
+        };
+        let fix = |p: Position| Position { line: p.line, column: p.column.max(indent(p.line)) };
+        let cursor = self.content.cursor();
+        let fixed = Cursor { position: fix(cursor.position), selection: cursor.selection.map(fix) };
+        if fixed != cursor {
+            self.content.move_to(fixed);
         }
     }
 
@@ -183,6 +220,127 @@ impl Buffer {
     fn refresh_markdown(&mut self) {
         if self.markdown.is_some() {
             self.markdown = Some(markdown::Content::parse(&self.text));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::widget::text_editor::Motion;
+
+    fn buffer(text: &str) -> Buffer {
+        Buffer::new(Document::from_bytes(text.as_bytes()).unwrap(), "Plain Text".into())
+    }
+
+    /// BIA's copy of the text matches what the widget shows.
+    fn assert_in_sync(b: &Buffer, context: &dyn std::fmt::Debug) {
+        assert_eq!(b.text(), b.content.text(), "text differs after {context:?}");
+        assert_eq!(b.line_count, b.content.line_count(), "line count differs after {context:?}");
+        assert!(!b.text().contains('\r'), "CR got in after {context:?}");
+    }
+
+    #[test]
+    fn shift_tab_inside_the_indentation() {
+        let mut b = buffer("    x = 1\n      y\n");
+        b.perform(Action::Move(Motion::Right));
+        b.perform(Action::Move(Motion::Right));
+        b.perform(Action::Edit(Edit::Unindent));
+        b.perform(Action::Edit(Edit::Insert('a')));
+        assert_eq!(b.text(), "ax = 1\n      y\n");
+        assert_in_sync(&b, &"unindent");
+
+        // A selection that ends inside the next line's indentation.
+        b.perform(Action::Select(Motion::Down));
+        b.perform(Action::Edit(Edit::Unindent));
+        b.perform(Action::Edit(Edit::Insert('b')));
+        assert_in_sync(&b, &"unindent with selection");
+    }
+
+    #[test]
+    fn pasted_line_breaks_are_normalized() {
+        let mut b = buffer("");
+        b.perform(Action::Edit(Edit::Paste(Arc::new("a\r\nb\rc".to_owned()))));
+        assert_eq!(b.text(), "a\nb\nc");
+        assert_in_sync(&b, &"paste");
+        b.undo();
+        assert_eq!(b.text(), "");
+    }
+
+    struct Rng(u64);
+
+    impl Rng {
+        fn below(&mut self, n: usize) -> usize {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (self.0 >> 33) as usize % n
+        }
+    }
+
+    /// Random typing, pasting, indenting, moving and undoing. The text and
+    /// the widget never drift apart, and undoing everything gets back the
+    /// original.
+    #[test]
+    fn random_edits_stay_in_sync_and_undo_fully() {
+        let original = "fn main() {\n    olá();\n\tlet x = \"日本\";\n}\n\nfim";
+        let motions = [
+            Motion::Left,
+            Motion::Right,
+            Motion::Up,
+            Motion::Down,
+            Motion::Home,
+            Motion::End,
+            Motion::WordLeft,
+            Motion::WordRight,
+            Motion::DocumentStart,
+            Motion::DocumentEnd,
+        ];
+        let chars = ['a', ' ', 'é', '日', '(', '\t'];
+        let pastes = ["foo\nbar", "ç", "", "    indented\n\n", "win\r\ndows", "old\rmac"];
+
+        for seed in 0..150 {
+            let mut rng = Rng(seed * 7919 + 1);
+            let mut b = buffer(original);
+            let mut log = Vec::new();
+            for _ in 0..60 {
+                let action = match rng.below(100) {
+                    0..=24 => Action::Edit(Edit::Insert(chars[rng.below(chars.len())])),
+                    25..=31 => Action::Edit(Edit::Enter),
+                    32..=41 => Action::Edit(Edit::Backspace),
+                    42..=47 => Action::Edit(Edit::Delete),
+                    48..=53 => Action::Edit(Edit::Paste(Arc::new(
+                        pastes[rng.below(pastes.len())].to_owned(),
+                    ))),
+                    54..=57 => Action::Edit(Edit::Indent),
+                    58..=63 => Action::Edit(Edit::Unindent),
+                    64..=77 => Action::Move(motions[rng.below(motions.len())]),
+                    78..=87 => Action::Select(motions[rng.below(motions.len())]),
+                    88..=89 => Action::SelectAll,
+                    90..=95 => {
+                        log.push("undo".to_owned());
+                        b.undo();
+                        continue;
+                    }
+                    _ => {
+                        log.push("redo".to_owned());
+                        b.redo();
+                        continue;
+                    }
+                };
+                log.push(format!("{action:?}"));
+                b.perform(action);
+                assert_in_sync(&b, &(seed, &log));
+            }
+
+            while b.redo() {}
+            let edited = b.text().to_owned();
+            while b.undo() {}
+            assert_eq!(b.text(), original, "seed {seed}: undo all, after {log:?}");
+            assert!(!b.is_dirty());
+            while b.redo() {}
+            assert_eq!(b.text(), edited, "seed {seed}: redo all, after {log:?}");
         }
     }
 }

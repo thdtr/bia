@@ -20,15 +20,13 @@ pub enum Body {
 pub struct Tab {
     pub path: PathBuf,
     pub body: Body,
-    /// First Ctrl+W on a dirty tab arms it; the second one discards.
-    pub close_armed: bool,
     /// Where the editor was scrolled to, restored when the tab comes back.
     pub scroll: AbsoluteOffset,
 }
 
 impl Tab {
     pub fn new(path: PathBuf, body: Body) -> Self {
-        Self { path, body, close_armed: false, scroll: AbsoluteOffset::default() }
+        Self { path, body, scroll: AbsoluteOffset::default() }
     }
 
     pub fn name(&self) -> String {

@@ -42,8 +42,8 @@ unshare -rn bia ~/code/project
 
 ## What this covers and what it doesn't
 
-The BIA binary built from this repository never opens a socket, makes an HTTP request
-or does a DNS lookup.
+BIA's own code never opens a network connection, makes an HTTP request or does a DNS
+lookup.
 
 Some things are outside that:
 
@@ -53,6 +53,9 @@ Some things are outside that:
 * **Local communication.** On Linux the request for that dialog goes over D-Bus, which
   uses a Unix socket. That's communication between programs on your own machine, not
   networking.
+* **Remote X11 or D-Bus.** If `DISPLAY` or `DBUS_SESSION_BUS_ADDRESS` point to another
+  machine (X forwarding, a remote session bus), the libraries that talk to your
+  desktop follow them over TCP. On a normal desktop both are local.
 * **Links in Markdown.** Clicking a link in the preview copies the URL. BIA doesn't
   open a browser.
 * **Images in Markdown.** The preview doesn't load images, local or remote. It shows
@@ -60,7 +63,11 @@ Some things are outside that:
 * **Network drives.** If you open a folder on NFS or SMB, your OS does the network
   I/O. BIA only reads the files.
 * **Builds from somewhere else.** This only holds for builds of this code. Build it
-  yourself, or compare the release checksums with the ones in the CI logs.
+  yourself, or check that a release file came from this repository's CI:
+
+  ```sh
+  gh attestation verify bia-x86_64-unknown-linux-gnu.tar.gz --repo thdtr/bia
+  ```
 
 ## Adding network features
 

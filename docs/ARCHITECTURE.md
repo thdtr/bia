@@ -29,7 +29,10 @@ bia/
 │   └── locales/         en.json, pt-BR.json, compiled into the binary
 ├── tools/
 │   ├── make_icons.py    generates the explorer icons
-│   └── make_logo.py     generates the logo and every app icon format
+│   ├── make_logo.py     generates the logo and every app icon format
+│   ├── make_social_preview.py   the image shown when a link to BIA is shared
+│   └── third_party_licenses.sh   licenses of everything the binary includes
+├── about.toml, about.hbs    cargo-about settings for the script above
 └── deny.toml            the dependency-level half of the "sealed" guarantee
 ```
 
@@ -91,9 +94,11 @@ keyboard / mouse ──► iced ──► Message ──► Bia::update ──�
   saves the parser state every 64 lines. After an edit on line 9,000, parsing restarts
   at line 8,960 instead of line 0.
 * **Saving.** `document::write_atomic` writes a temporary file next to the original,
-  flushes it to disk, copies the permissions and renames it over the original. It
-  follows symlinks. Line endings (LF or CRLF) and a UTF-8 BOM are written back the way
-  they were read.
+  with the same permissions, flushes it to disk and renames it over the original. It
+  follows symlinks. Files with more than one hard link, and files in folders where BIA
+  can't create files, are written in place instead. If the file changed on disk since
+  it was opened, BIA asks before overwriting it. Line endings (LF or CRLF) and a UTF-8
+  BOM are written back the way they were read.
 * **Settings.** Saving `settings.json`, or a file in `themes/` or `languages/`, from
   inside BIA reloads all of them. There's no settings screen; you edit the file.
 
@@ -109,8 +114,8 @@ few things an editor can't really do without:
 | Tabs | You usually work on more than one file. |
 | Unsaved changes warnings | A dot on the tab, and a question before closing or quitting. |
 | Atomic saves, line endings and BOM kept | Saving never corrupts a file or turns every line into a diff. |
-| Binary, non-UTF-8 and >16 MB files refused | Opening them as text would corrupt them or freeze the editor. |
-| Outside changes noticed on focus | After a `git checkout`, you don't overwrite the new version with an old one. |
+| Binary, non-UTF-8, CR-only and >16 MB files refused | Opening them as text would corrupt them or freeze the editor. |
+| Outside changes noticed on focus and on save | After a `git checkout`, you don't overwrite the new version with an old one. |
 | Create, rename and trash from the tree | Organizing files means more than looking at them. |
 | `bia <path>` on the command line | That's how most developers open an editor. |
 | A test for missing translations | A missing string fails CI instead of showing up as a key. |
@@ -124,6 +129,10 @@ few things an editor can't really do without:
   0.3 s for 3,000 lines and 0.8 s for 10,000. Files over 10,000 lines open without line
   numbers, which keeps scrolling and typing fast (`LARGE_FILE_LINES` in
   `ui/layout.rs`).
+* **Mixed line endings aren't kept.** A file that mixes LF and CRLF is saved with the
+  more common one. The status bar says so before you save.
+* **Bare CR line breaks aren't supported.** The editor widget treats `\r` as a line
+  break and BIA's copy of the text doesn't, so these files aren't opened.
 * **Each keystroke compares the whole text.** That's a byte comparison of at most
   16 MB, which you won't notice, and it keeps the undo code simple.
 

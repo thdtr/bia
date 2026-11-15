@@ -17,7 +17,7 @@ pub mod layout;
 pub mod style;
 mod workspace;
 
-use crate::app::{Bia, Message, QuitChoice};
+use crate::app::{Bia, Choice, Dialog, Message};
 use iced::widget::{
     Text, button, center, column, container, opaque, row, rule, space, stack, text,
 };
@@ -39,7 +39,10 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     let body = column![main, rule::horizontal(1).style(style::rule(c)), status_bar(app)];
     let base = container(body).width(Fill).height(Fill).style(style::surface(c.background, c.text));
 
-    if app.quitting { stack![base, quit_dialog(app)].into() } else { base.into() }
+    match &app.dialog {
+        Some(dialog) => stack![base, dialog_view(app, dialog)].into(),
+        None => base.into(),
+    }
 }
 
 /// Interface text in the UI font.
@@ -132,10 +135,16 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
         let syntax =
             if buffer.syntax == "Plain Text" { t.t("status.plain_text") } else { &buffer.syntax };
         let encoding = if buffer.bom { "UTF-8 BOM" } else { "UTF-8" };
+        let eol = buffer.line_ending.label();
+        let eol = if buffer.mixed_endings {
+            t.f("status.mixed_eol", &[("eol", &eol)])
+        } else {
+            eol.into()
+        };
         right = right
             .push(hint(app, t.f("status.line_col", &[("line", &line), ("col", &col)])))
             .push(hint(app, syntax.to_owned()))
-            .push(hint(app, buffer.line_ending.label()))
+            .push(hint(app, eol))
             .push(hint(app, encoding));
     }
 
@@ -148,23 +157,47 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
         .into()
 }
 
-fn quit_dialog(app: &Bia) -> Element<'_, Message> {
+fn dialog_view<'a>(app: &'a Bia, dialog: &Dialog) -> Element<'a, Message> {
     let c = app.look.colors;
     let t = &app.look.i18n;
-    let dirty = app.tabs.dirty_indices().len();
-    let choice = |key: &str, choice: QuitChoice, emphasis: bool| {
+    let name = |path: &std::path::Path| bia_core::tree::display_name(path);
+    // (message, labels for Save / Discard, which choice is the safe default)
+    let (message, save, discard, safe) = match dialog {
+        Dialog::Quit => {
+            let dirty = app.tabs.dirty_indices().len();
+            (
+                t.f("quit.message", &[("count", &dirty)]),
+                "quit.save_all",
+                "quit.discard",
+                Choice::Save,
+            )
+        }
+        Dialog::Close(path) => (
+            t.f("close.message", &[("name", &name(path))]),
+            "close.save",
+            "close.discard",
+            Choice::Save,
+        ),
+        Dialog::Conflict(path) => (
+            t.f("conflict.message", &[("name", &name(path))]),
+            "conflict.overwrite",
+            "conflict.reload",
+            Choice::Cancel,
+        ),
+    };
+    let choice = |key: &str, choice: Choice| {
         button(label(app, t.t(key).to_owned()))
             .padding([8, 14])
-            .style(style::outlined(c, emphasis))
-            .on_press(Message::Quit(choice))
+            .style(style::outlined(c, choice == safe))
+            .on_press(Message::Dialog(choice))
     };
     let card = container(
         column![
-            label(app, t.f("quit.message", &[("count", &dirty)])),
+            label(app, message),
             row![
-                choice("quit.save_all", QuitChoice::SaveAll, true),
-                choice("quit.discard", QuitChoice::Discard, false),
-                choice("quit.cancel", QuitChoice::Cancel, false),
+                choice(save, Choice::Save),
+                choice(discard, Choice::Discard),
+                choice("quit.cancel", Choice::Cancel),
             ]
             .spacing(10),
         ]

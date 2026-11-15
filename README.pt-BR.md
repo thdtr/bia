@@ -2,10 +2,16 @@
   <img src="assets/logo.svg" width="150" alt="bia">
   <p>Um editor minimalista feliz.</p>
   <p><a href="README.md">English</a> · <a href="docs/ARCHITECTURE.md">Arquitetura</a> · <a href="CONTRIBUTING.md">Como contribuir</a></p>
+  <p>
+    <a href="https://github.com/thdtr/bia/actions/workflows/ci.yml"><img src="https://github.com/thdtr/bia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/thdtr/bia/releases/latest"><img src="https://img.shields.io/github/v/release/thdtr/bia" alt="Release"></a>
+    <a href="#licença"><img src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-blue" alt="License"></a>
+  </p>
 </div>
 
-O BIA é um editor de código pequeno, feito em Rust. Árvore de arquivos, destaque de
-sintaxe, prévia de Markdown, temas e um arquivo de configuração. Só isso.
+O BIA é um editor de código pequeno para Linux, macOS e Windows, feito em Rust.
+Árvore de arquivos, destaque de sintaxe, prévia de Markdown, temas e um arquivo de
+configuração. Só isso.
 
 ![O BIA editando um dos próprios arquivos](docs/screenshot.png)
 
@@ -30,6 +36,16 @@ Também dá para baixar pela página de [releases](https://github.com/thdtr/bia/
 ou rodar `cargo install --git https://github.com/thdtr/bia bia`. Para desinstalar,
 adicione `--uninstall` (`... | sh -s -- --uninstall`). No Windows, defina
 `$env:BIA_UNINSTALL=1` e rode o comando de instalação de novo.
+
+### Aviso na primeira vez
+
+Os binários do BIA não são assinados com certificado pago. Se você baixar pela página
+de releases, o sistema pode mostrar um aviso na primeira vez que abrir o BIA:
+
+- **Windows:** clique em *Mais informações* e depois em *Executar assim mesmo*.
+- **macOS:** vá em *Ajustes do Sistema → Privacidade e Segurança* e clique em *Abrir Mesmo Assim*.
+
+Com os comandos de instalação acima, esse aviso não aparece.
 
 ## Recursos
 
@@ -72,15 +88,17 @@ No Mac, use `Cmd`.
   "font_family": "Fira Code",
   "font_size": 14,
   "line_height": 1.55,
+  "ui_font_family": "Fira Sans",
+  "ui_font_size": 13,
   "theme": "noite",
   "language": "auto",
   "hidden": [".git", "node_modules", "target"]
 }
 ```
 
-O BIA já vem com as fontes Fira Sans e Fira Code, mas aceita qualquer fonte
-instalada. `theme` pode ser `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou
-`pt-BR`. `hidden` lista os nomes que a árvore não mostra.
+`font_*` vale para o editor e `ui_font_*` para a interface. O BIA já vem com as
+fontes Fira Sans e Fira Code, mas aceita qualquer fonte instalada. `theme` pode ser
+`noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou `pt-BR`. `hidden` lista os nomes que a árvore não mostra.
 
 ## Licença
 
