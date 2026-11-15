@@ -1,0 +1,88 @@
+<div align="center">
+  <img src="assets/logo.svg" width="150" alt="bia">
+  <p>Um editor minimalista feliz.</p>
+  <p><a href="README.md">English</a> · <a href="docs/ARCHITECTURE.md">Arquitetura</a> · <a href="CONTRIBUTING.md">Como contribuir</a></p>
+</div>
+
+O BIA é um editor de código pequeno, feito em Rust. Árvore de arquivos, destaque de
+sintaxe, prévia de Markdown, temas e um arquivo de configuração. Só isso.
+
+![O BIA editando um dos próprios arquivos](docs/screenshot.png)
+
+## Instalação
+
+Linux e macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/thdtr/bia/main/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/thdtr/bia/main/install.ps1 | iex
+```
+
+Não precisa de administrador. Abra o BIA pelo menu de aplicativos ou rode
+`bia ~/codigo/projeto`.
+
+Também dá para baixar pela página de [releases](https://github.com/thdtr/bia/releases)
+ou rodar `cargo install --git https://github.com/thdtr/bia bia`. Para desinstalar,
+adicione `--uninstall` (`... | sh -s -- --uninstall`). No Windows, defina
+`$env:BIA_UNINSTALL=1` e rode o comando de instalação de novo.
+
+## Recursos
+
+- Árvore de arquivos com uma pasta por linha
+- Destaque de sintaxe para umas 200 linguagens, e outras com um arquivo `.sublime-syntax` ([veja como](docs/LANGUAGES.md))
+- Números de linha, abas, busca, desfazer e refazer
+- Prévia de Markdown ao vivo
+- Temas claro e escuro, ou o seu em JSON ([veja como](docs/THEMES.md))
+- Português e inglês
+- Salvamento seguro: gravação atômica, quebras de linha mantidas, arquivo apagado vai para a lixeira
+
+## Sem código de rede
+
+O BIA nunca se conecta à internet. Não tem telemetria nem busca por atualização, e o
+CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md)).
+
+## Atalhos
+
+| Teclas | Ação |
+|---|---|
+| `Ctrl+O` | Abrir pasta |
+| `Ctrl+S` | Salvar |
+| `Ctrl+W` | Fechar aba |
+| `Ctrl+F` / `F3` | Buscar / próximo resultado |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Desfazer / refazer |
+| `Ctrl+Shift+V` | Prévia de Markdown |
+| `Ctrl+B` | Mostrar ou esconder a barra lateral |
+| `Ctrl+N` / `Ctrl+Shift+N` | Novo arquivo / nova pasta |
+| `F2` / `Delete` | Renomear / mandar para a lixeira |
+| `Ctrl+,` | Configurações |
+
+No Mac, use `Cmd`.
+
+## Configurações
+
+`Ctrl+,` abre o `settings.json`. As mudanças valem quando você salva.
+
+```json
+{
+  "font_family": "Fira Code",
+  "font_size": 14,
+  "line_height": 1.55,
+  "theme": "noite",
+  "language": "auto",
+  "hidden": [".git", "node_modules", "target"]
+}
+```
+
+O BIA já vem com as fontes Fira Sans e Fira Code, mas aceita qualquer fonte
+instalada. `theme` pode ser `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou
+`pt-BR`. `hidden` lista os nomes que a árvore não mostra.
+
+## Licença
+
+MIT ou Apache 2.0, você escolhe. As fontes Fira que vêm junto usam a
+[SIL Open Font License](assets/fonts/OFL-FiraSans.txt).

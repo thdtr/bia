@@ -1,0 +1,74 @@
+# cargo-deny configuration. Run `cargo deny check`.
+#
+# The [bans] section is BIA's "sealed" guarantee for the dependency graph:
+# no HTTP, TLS, WebSocket or QUIC stack may ever enter the build, directly or
+# transitively. See docs/SEALED.md before changing it.
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+# Vulnerabilities anywhere in the graph fail the build. "Unmaintained" notices
+# only count for crates BIA chose directly: deep dependencies of iced or
+# syntect are out of our hands, and we track them through upgrades instead.
+unmaintained = "workspace"
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "ISC",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+  "0BSD",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  # HTTP clients and servers
+  { name = "reqwest", reason = "BIA is sealed: no network code" },
+  { name = "hyper", reason = "BIA is sealed: no network code" },
+  { name = "h2", reason = "BIA is sealed: no network code" },
+  { name = "h3", reason = "BIA is sealed: no network code" },
+  { name = "ureq", reason = "BIA is sealed: no network code" },
+  { name = "isahc", reason = "BIA is sealed: no network code" },
+  { name = "surf", reason = "BIA is sealed: no network code" },
+  { name = "attohttpc", reason = "BIA is sealed: no network code" },
+  { name = "minreq", reason = "BIA is sealed: no network code" },
+  { name = "curl", reason = "BIA is sealed: no network code" },
+  { name = "curl-sys", reason = "BIA is sealed: no network code" },
+  { name = "axum", reason = "BIA is sealed: no network code" },
+  { name = "actix-web", reason = "BIA is sealed: no network code" },
+  { name = "warp", reason = "BIA is sealed: no network code" },
+  { name = "tiny_http", reason = "BIA is sealed: no network code" },
+  # TLS
+  { name = "rustls", reason = "BIA is sealed: no network code" },
+  { name = "native-tls", reason = "BIA is sealed: no network code" },
+  { name = "openssl", reason = "BIA is sealed: no network code" },
+  { name = "openssl-sys", reason = "BIA is sealed: no network code" },
+  # WebSockets, QUIC, gRPC
+  { name = "tungstenite", reason = "BIA is sealed: no network code" },
+  { name = "tokio-tungstenite", reason = "BIA is sealed: no network code" },
+  { name = "quinn", reason = "BIA is sealed: no network code" },
+  { name = "tonic", reason = "BIA is sealed: no network code" },
+  # Telemetry
+  { name = "sentry", reason = "BIA is sealed: no telemetry" },
+  { name = "opentelemetry", reason = "BIA is sealed: no telemetry" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

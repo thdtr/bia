@@ -1,0 +1,25 @@
+[package]
+name = "bia-core"
+description = "GUI-independent core of the BIA editor: settings, themes, i18n, file tree, documents, history and languages."
+version.workspace = true
+# Built from this repository only: the crates read assets outside their folder.
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# Syntax definitions. `yaml-load` lets users drop `.sublime-syntax` files into
+# their config folder; `regex-fancy` keeps the build 100% Rust (no C toolchain).
+syntect = { version = "5.3", default-features = false, features = ["parsing", "yaml-load", "regex-fancy"] }
+# ~200 curated grammars (the ones `bat` ships), precompiled.
+two-face = { version = "0.4", default-features = false, features = ["syntect-fancy"] }
+# Reads the OS language on every platform (macOS GUI apps get no $LANG).
+sys-locale = "0.3"
+
+[lints]
+workspace = true

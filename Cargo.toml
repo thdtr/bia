@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/bia-core", "crates/bia"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/thdtr/bia"
+authors = ["BIA contributors"]
+keywords = ["editor", "ide", "text-editor", "minimal", "offline"]
+categories = ["text-editors", "development-tools"]
+
+[workspace.dependencies]
+bia-core = { path = "crates/bia-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+opt-level = 3
+panic = "abort"

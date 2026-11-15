@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+*.pdb
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+# BIA's own atomic-save temp files, should a crash ever leave one behind
+.*.bia~*
+# Python virtualenv for tools/*.py
+.venv/
