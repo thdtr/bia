@@ -21,7 +21,7 @@ jobs:
         with:
           tool: cargo-about
       - run: tools/third_party_licenses.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: third-party-licenses
           path: THIRD-PARTY-LICENSES.txt
@@ -111,7 +111,7 @@ jobs:
           Compress-Archive $name "$name.zip"
           (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: bia-*.*
