@@ -134,21 +134,21 @@ mod tests {
 
     #[test]
     fn shifted_letters_match_either_case() {
-        let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
+        let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
         for c in ["v", "V"] {
-            assert_eq!(press(c, Code::KeyV, ctrl_shift), Some(Shortcut::Preview));
+            assert_eq!(press(c, Code::KeyV, cmd_shift), Some(Shortcut::Preview));
         }
         for c in ["z", "Z"] {
-            assert_eq!(press(c, Code::KeyZ, ctrl_shift), Some(Shortcut::Redo));
+            assert_eq!(press(c, Code::KeyZ, cmd_shift), Some(Shortcut::Redo));
         }
-        assert_eq!(press("N", Code::KeyN, ctrl_shift), Some(Shortcut::NewFolder));
+        assert_eq!(press("N", Code::KeyN, cmd_shift), Some(Shortcut::NewFolder));
     }
 
     #[test]
     fn plain_bindings() {
-        assert_eq!(press("s", Code::KeyS, Modifiers::CTRL), Some(Shortcut::Save));
-        assert_eq!(press("z", Code::KeyZ, Modifiers::CTRL), Some(Shortcut::Undo));
-        assert_eq!(press(",", Code::Comma, Modifiers::CTRL), Some(Shortcut::Settings));
+        assert_eq!(press("s", Code::KeyS, Modifiers::COMMAND), Some(Shortcut::Save));
+        assert_eq!(press("z", Code::KeyZ, Modifiers::COMMAND), Some(Shortcut::Undo));
+        assert_eq!(press(",", Code::Comma, Modifiers::COMMAND), Some(Shortcut::Settings));
         // Typing letters without Ctrl is never a shortcut.
         assert_eq!(press("s", Code::KeyS, Modifiers::empty()), None);
         assert_eq!(press("S", Code::KeyS, Modifiers::SHIFT), None);
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn non_latin_layouts_use_the_physical_key() {
-        // A Cyrillic layout reports "ы" for the S key; Ctrl+S must still save.
-        assert_eq!(press("ы", Code::KeyS, Modifiers::CTRL), Some(Shortcut::Save));
+        // A Cyrillic layout reports "ы" for the S key; Ctrl+S (Cmd+S) must still save.
+        assert_eq!(press("ы", Code::KeyS, Modifiers::COMMAND), Some(Shortcut::Save));
     }
 }
