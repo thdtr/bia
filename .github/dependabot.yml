@@ -11,3 +11,11 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    # The MSRV job pins the toolchain to the version in Cargo.toml (rust-version).
+    # It isn't an action version, so it only changes when the MSRV does.
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain
+    # One pull request a month for all actions.
+    groups:
+      actions:
+        patterns: ["*"]

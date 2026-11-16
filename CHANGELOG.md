@@ -6,6 +6,13 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Syntax definitions updated to the set from `bat` 0.26 (two-face 0.5).
+- File dialogs updated (rfd 0.17). On Linux they still go through the XDG desktop
+  portal, and fall back to `zenity` when there's no portal. This also drops 34
+  dependencies from the build.
+
 ## [0.1.0] - 2026-11-15
 
 First version.

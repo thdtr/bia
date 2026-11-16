@@ -17,7 +17,7 @@ serde_json.workspace = true
 # their config folder; `regex-fancy` keeps the build 100% Rust (no C toolchain).
 syntect = { version = "5.3", default-features = false, features = ["parsing", "yaml-load", "regex-fancy"] }
 # ~200 curated grammars (the ones `bat` ships), precompiled.
-two-face = { version = "0.4", default-features = false, features = ["syntect-fancy"] }
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
 # Reads the OS language on every platform (macOS GUI apps get no $LANG).
 sys-locale = "0.3"
 

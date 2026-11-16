@@ -21,7 +21,7 @@ path = "src/main.rs"
 bia-core.workspace = true
 iced = { version = "0.14", features = ["markdown", "advanced", "svg"] }
 # Native "Open folder" dialog (XDG portal on Linux, no GTK).
-rfd = "0.15"
+rfd = "0.17"
 # Deleting from the explorer moves to the OS trash. Never a hard delete.
 trash = "5"
 

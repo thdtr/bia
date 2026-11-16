@@ -64,7 +64,7 @@ connects them to iced.
 | Markdown | pulldown-cmark (through iced) | CommonMark with GitHub's tables, task lists and strikethrough. |
 | Settings, themes, translations | serde + serde_json | `settings.json` was a given, so everything else is JSON too. |
 | System language | sys-locale | macOS apps don't get `$LANG`, and Windows has no equivalent. |
-| Folder picker | rfd | Native dialogs. On Linux it talks to the XDG desktop portal instead of linking GTK. |
+| Folder picker | rfd | Native dialogs. On Linux it talks to the XDG desktop portal instead of linking GTK, and runs `zenity` if there's no portal. |
 | Deleting files | trash | Files deleted from the tree go to the OS trash. |
 
 Things we chose not to add: an async runtime (iced's thread pool is enough), a file
