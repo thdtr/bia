@@ -35,6 +35,7 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
 /// Nothing open: the brand mark and the handful of keys worth knowing.
 fn empty(app: &Bia) -> Element<'_, Message> {
     let keys = [
+        ("Ctrl+P", "welcome.open_file"),
         ("Ctrl+O", "welcome.open_folder"),
         ("Ctrl+N", "shelf.new_file"),
         ("Ctrl+,", "welcome.settings"),

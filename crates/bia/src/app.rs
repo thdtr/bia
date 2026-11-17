@@ -23,6 +23,7 @@ use bia_core::language::{
     syntect::{highlighting::Theme as SyntaxTheme, parsing::SyntaxSet},
 };
 use bia_core::settings::{Settings, SettingsError};
+use bia_core::state::State;
 use bia_core::text;
 use bia_core::theme::Theme as BiaTheme;
 use bia_core::tree::{self, FileTree};
@@ -275,6 +276,13 @@ impl Bia {
             app.error(e);
         }
 
+        // With nothing on the command line, BIA reopens the last folder.
+        if paths.is_empty()
+            && let Some(folder) = State::load(&paths::state_file()).last_folder()
+        {
+            app.open_root(folder.to_path_buf(), false);
+        }
+
         let mut tasks = Vec::new();
         for arg in paths {
             // `bia src/main.rs:42:7`, the way compilers print locations.
@@ -291,14 +299,14 @@ impl Bia {
                 fs::canonicalize(&path).or_else(|_| std::path::absolute(&path)).unwrap_or(path);
             if path.is_dir() {
                 if app.tree.is_none() {
-                    app.open_root(path);
+                    app.open_root(path, true);
                 }
                 continue;
             }
             if app.tree.is_none()
                 && let Some(parent) = path.parent().filter(|p| p.is_dir())
             {
-                app.open_root(parent.to_path_buf());
+                app.open_root(parent.to_path_buf(), false);
             }
             if path.is_file() {
                 tasks.push(app.open_at(path, at));
@@ -409,7 +417,7 @@ impl Bia {
                 let start = self.tree.as_ref().map(|t| t.root().to_path_buf());
                 return Task::perform(pick_folder(start), Message::FolderPicked);
             }
-            Message::FolderPicked(Some(path)) => self.open_root(path),
+            Message::FolderPicked(Some(path)) => self.open_root(path, true),
             Message::FolderPicked(None) => {}
 
             Message::RowPressed(path) => {
@@ -639,7 +647,13 @@ impl Bia {
 
     // ── Files and tabs ───────────────────────────────────────────────────
 
-    fn open_root(&mut self, root: PathBuf) {
+    /// Makes `root` the workspace. `remember` saves it as the folder to open
+    /// next time: true for folders you chose, false for a file's folder.
+    fn open_root(&mut self, root: PathBuf, remember: bool) {
+        if remember {
+            // Not worth an error: the worst case is the welcome screen next time.
+            let _ = State { last_folder: Some(root.clone()) }.save(&paths::state_file());
+        }
         self.palette = None;
         self.tree = Some(FileTree::new(root, self.settings.hidden.clone()));
         self.selected = None;

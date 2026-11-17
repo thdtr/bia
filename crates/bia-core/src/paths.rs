@@ -3,6 +3,7 @@
 //! ```text
 //! <config>/bia/
 //! ├── settings.json
+//! ├── state.json   (written by BIA: the last folder opened)
 //! ├── themes/      *.json      (custom themes)
 //! └── languages/   *.sublime-syntax  (extra grammars)
 //! ```
@@ -24,6 +25,10 @@ pub fn config_dir() -> PathBuf {
 
 pub fn settings_file() -> PathBuf {
     config_dir().join("settings.json")
+}
+
+pub fn state_file() -> PathBuf {
+    config_dir().join("state.json")
 }
 
 pub fn themes_dir() -> PathBuf {

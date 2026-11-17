@@ -16,6 +16,8 @@ Notable changes to BIA are listed here. The format is based on
 - Replace (`Ctrl+H`, or `Cmd+Alt+F` on macOS), one match at a time or all at once.
 - Open a file by name with `Ctrl+P`. Add `:line` to jump to a line.
 - Go to line with `Ctrl+G`, and `bia file:line:column` on the command line.
+- With no arguments, BIA reopens the last folder you opened. It's saved in
+  `state.json`, next to `settings.json`.
 
 ### Changed
 

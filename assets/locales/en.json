@@ -1,6 +1,7 @@
 {
   "app.tagline": "A happy minimalist editor.",
   "app.sealed": "BIA has no network code. Your files stay on your machine.",
+  "welcome.open_file": "Open file by name",
   "welcome.open_folder": "Open folder",
   "welcome.settings": "Settings",
   "explorer.empty": "Empty folder",

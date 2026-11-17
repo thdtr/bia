@@ -1,6 +1,7 @@
 {
   "app.tagline": "Um editor minimalista feliz.",
   "app.sealed": "O BIA não tem código de rede. Seus arquivos ficam na sua máquina.",
+  "welcome.open_file": "Abrir arquivo pelo nome",
   "welcome.open_folder": "Abrir pasta",
   "welcome.settings": "Configurações",
   "explorer.empty": "Pasta vazia",

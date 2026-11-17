@@ -30,7 +30,8 @@ irm https://raw.githubusercontent.com/thdtr/bia/main/install.ps1 | iex
 ```
 
 Não precisa de administrador. Abra o BIA pelo menu de aplicativos ou rode
-`bia ~/codigo/projeto`. `bia src/main.rs:42` abre o arquivo na linha 42.
+`bia ~/codigo/projeto`. `bia src/main.rs:42` abre o arquivo na linha 42. Sem
+argumentos, o BIA reabre a última pasta que você abriu.
 
 Também dá para baixar pela página de [releases](https://github.com/thdtr/bia/releases)
 ou rodar `cargo install --git https://github.com/thdtr/bia bia`. Para desinstalar,

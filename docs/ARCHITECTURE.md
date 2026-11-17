@@ -121,6 +121,7 @@ few things an editor can't really do without:
 | Outside changes noticed on focus and on save | After a `git checkout`, you don't overwrite the new version with an old one. |
 | Create, rename and trash from the tree | Organizing files means more than looking at them. |
 | `bia <path>` on the command line | That's how most developers open an editor. |
+| Reopen the last folder | Opened from the app menu, BIA would otherwise start empty every time. The folder is kept in `state.json`, next to `settings.json`, so BIA never rewrites the file you edit. |
 | A test for missing translations | A missing string fails CI instead of showing up as a key. |
 
 ## Known limitations

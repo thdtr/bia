@@ -29,7 +29,8 @@ irm https://raw.githubusercontent.com/thdtr/bia/main/install.ps1 | iex
 ```
 
 No admin rights needed. Open BIA from your app menu, or run `bia ~/code/project`.
-`bia src/main.rs:42` opens a file at line 42.
+`bia src/main.rs:42` opens a file at line 42. Run with no arguments, BIA reopens the
+last folder you opened.
 
 You can also grab a build from [releases](https://github.com/thdtr/bia/releases) or run
 `cargo install --git https://github.com/thdtr/bia bia`. To uninstall, add `--uninstall`
