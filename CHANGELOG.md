@@ -32,6 +32,9 @@ Notable changes to BIA are listed here. The format is based on
 - `Ctrl+C` and `Ctrl+X` with nothing selected take the whole line, and pasting it
   puts it above the cursor's line.
 - `Ctrl+Backspace` and `Ctrl+Delete` delete a word.
+- A terminal panel (`` Ctrl+` `` or "Terminal" in the status bar) running your shell
+  in the open folder, with colors, scrollback and full-screen programs.
+  `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste.
 - Language servers, named per language in `"language_servers"` (BIA starts none
   on its own): errors and warnings underlined as you type, with counts in the
   status bar and the message under the cursor; a hover card when the mouse rests;
@@ -60,6 +63,9 @@ Notable changes to BIA are listed here. The format is based on
 
 ### Fixed
 
+- With the CPU renderer (no GPU), text that changed to other text of the same width
+  could stay on screen as it was. iced tells paragraphs apart without their text;
+  BIA now gives each one bounds of its own.
 - The Markdown preview showed indented code blocks as an empty box, with their text
   as a paragraph after it.
 - Find ignored case only for ASCII letters: `É` didn't find `é`.

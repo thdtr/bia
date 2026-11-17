@@ -19,6 +19,7 @@
 //! | Ctrl+N / Ctrl+Shift+N | New file / new folder      |
 //! | F2 / Delete           | Rename / trash selection   |
 //! | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset   |
+//! | Ctrl+`                | Show / hide the terminal   |
 //!
 //! In the editor ([`editor_command`]), besides arrows, Home, End and the
 //! clipboard:
@@ -73,6 +74,7 @@ pub enum Shortcut {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    Terminal,
     Escape,
     Confirm,
     /// Arrow keys nothing else used: they move through lists.
@@ -129,6 +131,7 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         '=' | '+' => ZoomIn,
         '-' => ZoomOut,
         '0' => ZoomReset,
+        '`' => Terminal,
         _ => return None,
     })
 }

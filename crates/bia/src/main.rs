@@ -17,6 +17,8 @@ mod lsp;
 mod markdown;
 mod syntax;
 mod tabs;
+mod terminal;
+mod terminal_view;
 mod ui;
 
 use std::path::PathBuf;

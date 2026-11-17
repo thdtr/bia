@@ -15,6 +15,7 @@ use crate::keys::{self, Shortcut};
 use crate::lsp::{Effect, Lsp};
 use crate::syntax;
 use crate::tabs::{Body, Tab, Tabs};
+use crate::terminal::{TermEvent, Terminal};
 use crate::ui::{self, style::Colors};
 use bia_core::backup::{self, Backup};
 use bia_core::document::{self, Document, LoadError};
@@ -48,6 +49,7 @@ pub const FIND_ID: &str = "bia-find";
 pub const REPLACE_ID: &str = "bia-replace";
 pub const PALETTE_ID: &str = "bia-palette";
 pub const SEARCH_ID: &str = "bia-search";
+pub const TERMINAL_ID: &str = "bia-terminal";
 
 /// Notices fade on the next interaction after this long.
 const NOTICE_TTL: Duration = Duration::from_secs(4);
@@ -101,6 +103,10 @@ pub enum Message {
     Lsp(bia_core::lsp::Event),
     /// Time to send edited files to their language servers.
     LspSync,
+    TermChannel(iced::futures::channel::mpsc::UnboundedSender<TermEvent>),
+    Term(TermEvent),
+    TermResize(crate::terminal::Size),
+    ToggleTerminal,
     RowPressed(PathBuf),
     RowContext(PathBuf),
     ToggleShelf,
@@ -308,6 +314,11 @@ pub struct Bia {
     /// What git says about the open folder; empty outside a repository.
     pub git: Arc<git::Status>,
     pub lsp: Lsp,
+    /// The shell in the bottom panel, once opened. It keeps running while
+    /// the panel is hidden.
+    pub terminal: Option<Terminal>,
+    pub terminal_open: bool,
+    term_events: Option<iced::futures::channel::mpsc::UnboundedSender<TermEvent>>,
     pub dialog: Option<Dialog>,
     /// `font_size` as settings.json has it, while zoom changes the live one.
     font_size_setting: f32,
@@ -348,6 +359,9 @@ impl Bia {
             project_search: ProjectSearch::default(),
             git: Arc::default(),
             lsp: Lsp::default(),
+            terminal: None,
+            terminal_open: false,
+            term_events: None,
             dialog: None,
         };
         if let Some(e) = settings_error {
@@ -431,7 +445,11 @@ impl Bia {
             }
             _ => None,
         });
-        Subscription::batch([keys, Subscription::run(lsp_events)])
+        Subscription::batch([
+            keys,
+            Subscription::run(lsp_events),
+            Subscription::run(terminal_events),
+        ])
     }
 
     // ── Queries used by the view ─────────────────────────────────────────
@@ -604,6 +622,33 @@ impl Bia {
                 self.lsp.sync_scheduled = false;
                 self.sync_lsp();
             }
+            Message::TermChannel(sender) => self.term_events = Some(sender),
+            Message::Term(event) => match event {
+                // New output: the view redraws after any message.
+                TermEvent::Wakeup => {}
+                TermEvent::Title(title) => {
+                    if let Some(t) = &mut self.terminal {
+                        t.title = title;
+                    }
+                }
+                TermEvent::Reply(text) => {
+                    if let Some(t) = &self.terminal {
+                        t.write(text.into_bytes());
+                    }
+                }
+                TermEvent::Copy(text) => return iced::clipboard::write(text),
+                TermEvent::Exit => {
+                    self.terminal = None;
+                    self.terminal_open = false;
+                    return operation::focus(EDITOR_ID);
+                }
+            },
+            Message::TermResize(size) => {
+                if let Some(t) = &mut self.terminal {
+                    t.resize(size);
+                }
+            }
+            Message::ToggleTerminal => return self.toggle_terminal(),
             Message::EditorScrolled(offset) => {
                 if let Some(tab) = self.tabs.active_mut() {
                     tab.scroll = offset;
@@ -809,6 +854,7 @@ impl Bia {
             Shortcut::ZoomIn => self.zoom(Some(1.0)),
             Shortcut::ZoomOut => self.zoom(Some(-1.0)),
             Shortcut::ZoomReset => self.zoom(None),
+            Shortcut::Terminal => return self.toggle_terminal(),
             Shortcut::NewFile => return self.shelf_action(ShelfAction::NewFile),
             Shortcut::NewFolder => return self.shelf_action(ShelfAction::NewFolder),
             Shortcut::Rename => return self.shelf_action(ShelfAction::Rename),
@@ -876,6 +922,41 @@ impl Bia {
         }
         let restore = self.restore_session(&root, session.unwrap_or_default());
         Task::batch([restore, self.refresh_git()])
+    }
+
+    // ── Terminal ─────────────────────────────────────────────────────────
+
+    /// Ctrl+`: shows the terminal (starting the shell the first time) or
+    /// hides it, moving the focus there and back.
+    fn toggle_terminal(&mut self) -> Task<Message> {
+        if self.terminal_open {
+            self.terminal_open = false;
+            return operation::focus(EDITOR_ID);
+        }
+        if self.terminal.is_none() {
+            let Some(events) = self.term_events.clone() else { return Task::none() };
+            let dir = self
+                .tree
+                .as_ref()
+                .map(|t| t.root().to_path_buf())
+                .or_else(|| {
+                    std::env::var_os("HOME")
+                        .or_else(|| std::env::var_os("USERPROFILE"))
+                        .map(PathBuf::from)
+                })
+                .unwrap_or_else(|| PathBuf::from("."));
+            let size = crate::terminal::Size { columns: 80, lines: 12 };
+            match Terminal::spawn(&dir, size, events) {
+                Ok(terminal) => self.terminal = Some(terminal),
+                Err(e) => {
+                    let text = self.look.i18n.f("notice.terminal_failed", &[("error", &e)]);
+                    self.error(text);
+                    return Task::none();
+                }
+            }
+        }
+        self.terminal_open = true;
+        operation::focus(TERMINAL_ID)
     }
 
     // ── Language servers ─────────────────────────────────────────────────
@@ -1938,6 +2019,18 @@ fn word_start(rope: &ropey::Rope, cursor: usize) -> usize {
         start -= c.len_utf8();
     }
     start
+}
+
+/// Events from the terminal's thread, the same way as [`lsp_events`].
+fn terminal_events() -> impl iced::futures::Stream<Item = Message> {
+    use iced::futures::{SinkExt, StreamExt};
+    iced::stream::channel(64, async |mut output| {
+        let (sender, mut events) = iced::futures::channel::mpsc::unbounded();
+        let _ = output.send(Message::TermChannel(sender)).await;
+        while let Some(event) = events.next().await {
+            let _ = output.send(Message::Term(event)).await;
+        }
+    })
 }
 
 /// Events from language servers. The first message hands the app the

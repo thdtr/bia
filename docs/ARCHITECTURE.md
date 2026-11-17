@@ -72,6 +72,7 @@ connects them to iced.
 | Deleting files | trash | Files deleted from the tree go to the OS trash. |
 | Search | regex | Find, replace and find in files. Plain text goes through it too, escaped, for Unicode case folding. Its engine was already in the build through syntect. |
 | Walking a folder | ignore | From ripgrep. Applies `.gitignore`, `.ignore` and the global excludes for `Ctrl+P` and find in files. |
+| Terminal | alacritty_terminal | The terminal core of Alacritty: the pseudo-terminal on Linux, macOS and Windows, escape sequences, the grid and scrollback. BIA draws the grid itself, one cached `Paragraph` per run of cells with the same look, placed at its column. |
 | Git marks | similar, and the `git` program | `git cat-file` gives a file's committed text, `similar` diffs it line by line. A git library would add dozens of crates; the `git` you already have reads the repository the same way. See [SEALED.md](SEALED.md) for how it's called. |
 
 Things we chose not to add: an async runtime (iced's thread pool is enough), a file
@@ -145,6 +146,7 @@ few things an editor can't really do without:
 | Comment, move, duplicate, delete lines; closing pairs | What hands expect in any code editor. Comment tokens are a table in `editing.rs`, since the built-in grammars don't carry them. |
 | Reopen the open files | `state.json` keeps each folder's tabs and cursors. |
 | Language servers | Errors and warnings underlined as you type, hover cards, completion, go to definition, format, rename, next problem. `bia-core/lsp` speaks JSON-RPC over the server's stdio from a thread; the app keeps one server per language and sends each file's full text 150 ms after edits stop. Positions are UTF-8 when the server agrees, UTF-16 otherwise. Servers are named in `language_servers`, never found or downloaded. |
+| Terminal (`` Ctrl+` ``) | Your shell in a panel under the editor, starting in the open folder. It keeps running while hidden. `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste; `Ctrl+C` goes to the program. |
 | Git: changed lines, changed files, the branch | Marks beside the line numbers, colors in the tree, the branch in the status bar. Refreshed on save and when the window gets focus back. |
 | Backups of unsaved edits | Written to `backups/` two seconds after the last edit, removed on save or discard. A crash loses at most those two seconds. |
 
@@ -160,7 +162,7 @@ few things an editor can't really do without:
 
 ## Not in BIA yet
 
-There's no terminal, debugger, plugins or AI in BIA today. Some
+There's no debugger, plugins or AI in BIA today. Some
 of them may come. Each one adds a lot to a small codebase (LSP alone would roughly
 double it), so open an issue to talk it through before writing code.
 

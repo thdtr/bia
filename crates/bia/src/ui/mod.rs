@@ -24,6 +24,9 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
+/// Height of the terminal panel.
+const TERMINAL_HEIGHT: f32 = 260.0;
+
 pub fn view(app: &Bia) -> Element<'_, Message> {
     let c = app.look.colors;
     let main: Element<'_, Message> = if app.tree.is_none() && app.tabs.is_empty() {
@@ -40,7 +43,23 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
         main.push(workspace::view(app)).height(Fill).into()
     };
 
-    let body = column![main, rule::horizontal(1).style(style::rule(c)), status_bar(app)];
+    let mut body = column![main];
+    if app.terminal_open
+        && let Some(terminal) = &app.terminal
+    {
+        let view = crate::terminal_view::TerminalView::new(
+            crate::app::TERMINAL_ID,
+            terminal,
+            app.look.editor_font,
+            app.settings.font_size,
+            c,
+            Message::TermResize,
+        );
+        body = body
+            .push(rule::horizontal(1).style(style::rule(c)))
+            .push(container(view).height(Length::Fixed(TERMINAL_HEIGHT)));
+    }
+    let body = body.push(rule::horizontal(1).style(style::rule(c))).push(status_bar(app));
     let base = container(body).width(Fill).height(Fill).style(style::surface(c.background, c.text));
 
     let mut layers = stack![base];
@@ -202,6 +221,16 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
             right = right.push(hint(app, counts).color(color));
         }
     }
+    right = right.push(
+        button(hint(app, t.t("status.terminal")).color(if app.terminal_open {
+            c.accent
+        } else {
+            c.muted
+        }))
+        .padding(0)
+        .style(style::quiet(c))
+        .on_press(Message::ToggleTerminal),
+    );
     if let Some(branch) = &app.git.branch {
         let icon = explorer::icon(crate::icons::get("git"), c.muted);
         right = right

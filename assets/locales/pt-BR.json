@@ -64,6 +64,8 @@
   "notice.no_comments": "O BIA não sabe como {language} escreve comentários",
   "notice.zoom": "Tamanho da fonte {size}",
   "notice.recovered": "Alterações não salvas de {name} recuperadas",
+  "notice.terminal_failed": "O terminal não iniciou: {error}",
+  "status.terminal": "Terminal",
   "notice.lsp_failed": "O servidor de linguagem não iniciou: {error}",
   "notice.lsp_error": "Servidor de linguagem: {error}",
   "notice.no_lsp": "Nenhum servidor de linguagem para {language}. Configure em \"language_servers\" no settings.json.",

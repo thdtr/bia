@@ -412,7 +412,7 @@ impl<Message> CodeView<'_, Message> {
         let column = if x <= 0.0 {
             r.start
         } else {
-            let paragraph = self.paragraph(&row_text.text, &[]);
+            let paragraph = self.paragraph(&row_text.text, &[], 0);
             match paragraph.hit_test(Point::new(x, m.line / 2.0)) {
                 Some(hit) => row_text.to_line(hit.cursor()),
                 None => r.end,
@@ -438,16 +438,18 @@ impl<Message> CodeView<'_, Message> {
         let r = self.row(&display, row, &text);
         let row_text = RowText::new(&text, r.start, r.end, self.editor.tab_width);
         let index = row_text.text[..row_text.to_text(col)].graphemes(true).count();
-        let paragraph = self.paragraph(&row_text.text, &[]);
+        let paragraph = self.paragraph(&row_text.text, &[], 0);
         let x = paragraph.grapheme_position(0, index).map_or(0.0, |p| p.x);
         (row, x)
     }
 
-    fn paragraph(&self, content: &str, spans: &[Span<'_, (), Font>]) -> Paragraph {
-        fn text<T>(view: &CodeView<'_, impl Sized>, content: T) -> text::Text<T, Font> {
+    /// A paragraph of `content`; `tag` (a hash of what it shows) keeps
+    /// iced from mistaking it for another one (see `fonts::tagged_bounds`).
+    fn paragraph(&self, content: &str, spans: &[Span<'_, (), Font>], tag: u64) -> Paragraph {
+        fn text<T>(view: &CodeView<'_, impl Sized>, content: T, tag: u64) -> text::Text<T, Font> {
             text::Text {
                 content,
-                bounds: Size::INFINITE,
+                bounds: fonts::tagged_bounds(f32::INFINITY, tag),
                 size: Pixels(view.size),
                 line_height: LineHeight::Relative(view.line_height),
                 font: view.font,
@@ -458,9 +460,9 @@ impl<Message> CodeView<'_, Message> {
             }
         }
         if spans.is_empty() {
-            Paragraph::with_text(text(self, content))
+            Paragraph::with_text(text(self, content, tag))
         } else {
-            Paragraph::with_spans(text(self, spans))
+            Paragraph::with_spans(text(self, spans, tag))
         }
     }
 }
@@ -1319,7 +1321,7 @@ impl<Message> CodeView<'_, Message> {
         if at < text.len() || spans.is_empty() {
             spans.push(Span::new(&text[at..]));
         }
-        let paragraph = self.paragraph(text, &spans);
+        let paragraph = self.paragraph(text, &spans, key);
         cache.paragraphs.insert(key, paragraph.clone());
         paragraph
     }
@@ -1336,7 +1338,7 @@ impl<Message> CodeView<'_, Message> {
         }
         let paragraph = Paragraph::with_text(text::Text {
             content,
-            bounds: Size::new(width.unwrap_or(f32::INFINITY), f32::INFINITY),
+            bounds: fonts::tagged_bounds(width.unwrap_or(f32::INFINITY), key),
             size: Pixels(size),
             line_height: LineHeight::Relative(1.4),
             font: self.font,
@@ -1357,7 +1359,7 @@ impl<Message> CodeView<'_, Message> {
         if let Some(p) = cache.paragraphs.get(&key) {
             return p.clone();
         }
-        let paragraph = self.paragraph(&n.to_string(), &[]);
+        let paragraph = self.paragraph(&n.to_string(), &[], key);
         cache.paragraphs.insert(key, paragraph.clone());
         paragraph
     }

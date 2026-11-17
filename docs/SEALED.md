@@ -69,6 +69,8 @@ Some things are outside that:
   daemon and every transport (`protocol.allow=never`). Programs are separate from
   BIA, so what they do is up to them, but none of these calls asks git to use the
   network.
+* **The terminal.** It runs your shell, and what you run there is yours, network
+  included. BIA only shows it.
 * **Language servers.** They're programs you install and name in
   `language_servers`; BIA starts none on its own and downloads none. It talks to them
   over their stdin and stdout. What a server does is up to it, and some reach the

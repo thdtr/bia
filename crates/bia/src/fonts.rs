@@ -56,6 +56,18 @@ pub fn from_setting(name: &str) -> Font {
     }
 }
 
+/// Bounds for a paragraph that will be drawn: `width` (or infinite) and a
+/// height derived from `key`, a hash of what the paragraph shows.
+///
+/// iced 0.14 tells paragraphs apart by font, size and bounds, not by their
+/// text, and its CPU renderer skips redrawing what it thinks is equal: a
+/// row whose `1` became a `2` stayed a `1` on screen. The height never
+/// matters for one line of top-aligned text, so it carries the difference.
+pub fn tagged_bounds(width: f32, key: u64) -> Size {
+    // Whole numbers up to 2^24 are exact in an f32.
+    Size::new(width, 4_000_000.0 + (key % 8_000_000) as f32)
+}
+
 /// Advance width of one character in `font`, measured with the same text
 /// engine the editor uses. Exact for monospace fonts, an average otherwise.
 pub fn char_width(font: Font, size: f32, line_height: f32) -> f32 {

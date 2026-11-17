@@ -31,6 +31,7 @@ ropey = { version = "1.6", default-features = false, features = ["simd"] }
 trash = "5"
 # Cursor x positions: iced measures text by grapheme.
 unicode-segmentation = "1"
+alacritty_terminal = "0.26.0"
 
 # Puts the app icon into bia.exe (see build.rs).
 [target.'cfg(windows)'.build-dependencies]

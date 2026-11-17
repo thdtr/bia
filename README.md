@@ -67,6 +67,7 @@ The install commands above don't trigger this warning.
 - Safe saves: atomic writes, line endings kept, deleted files go to the trash
 - Reopens the files you left open, and brings back unsaved edits after a crash
 - Git: changed lines beside the line numbers, changed files in the tree, the branch
+- A terminal panel with your shell
 - Language servers you choose: errors as you type, completion, go to definition,
   hover, format, rename
 
@@ -107,6 +108,7 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `Ctrl+N` / `Ctrl+Shift+N` | New file / folder |
 | `F2` / `Delete` | Rename / move to trash |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Bigger / smaller / reset font |
+| `` Ctrl+` `` | Show / hide the terminal |
 | `Ctrl+,` | Settings |
 
 On a Mac, use `Cmd` and `Option`. Replace is `Cmd+Alt+F`.

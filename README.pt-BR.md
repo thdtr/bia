@@ -69,6 +69,7 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Salvamento seguro: gravação atômica, quebras de linha mantidas, arquivo apagado vai para a lixeira
 - Reabre os arquivos que estavam abertos e recupera o que não foi salvo depois de um travamento
 - Git: linhas alteradas ao lado dos números, arquivos alterados na árvore, a branch
+- Um painel de terminal com o seu shell
 - Servidores de linguagem que você escolhe: erros enquanto digita, completar, ir para
   a definição, hover, formatar, renomear
 
@@ -109,6 +110,7 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `Ctrl+N` / `Ctrl+Shift+N` | Novo arquivo / nova pasta |
 | `F2` / `Delete` | Renomear / mandar para a lixeira |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Fonte maior / menor / original |
+| `` Ctrl+` `` | Mostrar / esconder o terminal |
 | `Ctrl+,` | Configurações |
 
 No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`.
