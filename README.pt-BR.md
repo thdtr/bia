@@ -5,7 +5,7 @@
   <p>
     <a href="https://github.com/thdtr/bia/actions/workflows/ci.yml"><img src="https://github.com/thdtr/bia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/thdtr/bia/releases/latest"><img src="https://img.shields.io/github/v/release/thdtr/bia" alt="Release"></a>
-    <a href="#licença"><img src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-blue" alt="License"></a>
+    <a href="#licença"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
   </p>
 </div>
 
@@ -114,5 +114,5 @@ têm mantêm a deles.
 
 ## Licença
 
-MIT ou Apache 2.0, você escolhe. As fontes Fira que vêm junto usam a
+[MIT](LICENSE). As fontes Fira que vêm junto usam a
 [SIL Open Font License](assets/fonts/OFL-FiraSans.txt).

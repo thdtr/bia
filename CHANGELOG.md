@@ -6,6 +6,11 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- MIT is now the only license. Versions up to 0.2.0 remain available under MIT or
+  Apache 2.0.
+
 ### Fixed
 
 - A file that fits in the editor no longer shows a scrollbar or scrolls a little.

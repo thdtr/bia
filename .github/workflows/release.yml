@@ -60,7 +60,7 @@ jobs:
           name="bia-${{ matrix.target }}"
           mkdir "$name"
           cp "target/${{ matrix.target }}/release/bia" assets/linux/bia.desktop assets/icons/bia.svg \
-             README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES.txt "$name/"
+             README.md LICENSE THIRD-PARTY-LICENSES.txt "$name/"
           tar czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
 
@@ -97,7 +97,7 @@ jobs:
           PLIST
           # Ad-hoc signature: required for arm64 binaries to launch at all.
           codesign --force --deep --sign - "$name/BIA.app"
-          cp README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES.txt "$name/"
+          cp README.md LICENSE THIRD-PARTY-LICENSES.txt "$name/"
           tar czf "$name.tar.gz" "$name"
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
 
@@ -107,7 +107,7 @@ jobs:
         run: |
           $name = "bia-${{ matrix.target }}"
           New-Item -ItemType Directory $name | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/bia.exe", assets/icons/bia.ico, README.md, LICENSE-MIT, LICENSE-APACHE, THIRD-PARTY-LICENSES.txt $name
+          Copy-Item "target/${{ matrix.target }}/release/bia.exe", assets/icons/bia.ico, README.md, LICENSE, THIRD-PARTY-LICENSES.txt $name
           Compress-Archive $name "$name.zip"
           (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
 

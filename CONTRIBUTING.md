@@ -88,5 +88,5 @@ short. If the reason for the change isn't obvious, explain it in the body.
 
 ## License
 
-By contributing, you agree that your work is licensed under MIT or Apache-2.0, like the
-rest of the project.
+By contributing, you agree that your work is licensed under MIT, like the rest of the
+project.
