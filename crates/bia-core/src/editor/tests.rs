@@ -327,6 +327,7 @@ fn random_commands() {
         let mut rng = Rng(seed * 7919 + 1);
         let mut ed = Editor::new(original, Indent::spaces(4));
         ed.syntax = "Rust".into();
+        let mut map = DisplayMap::for_editor(&ed, Some(12));
         let mut log: Vec<String> = Vec::new();
         for _ in 0..80 {
             let n = rng.below(100);
@@ -424,6 +425,9 @@ fn random_commands() {
             };
             log.push(step);
             check(&ed, seed, &log);
+            // Updated edit by edit, the wrapped rows match a fresh count.
+            map.sync(&ed, Some(12));
+            assert_eq!(map, DisplayMap::for_editor(&ed, Some(12)), "seed {seed}: after {log:?}");
         }
         while ed.redo() {}
         let edited = ed.text();
@@ -491,4 +495,23 @@ fn brackets_match() {
     assert_eq!(ed.matching_bracket(12), Some((1, 11)));
     assert_eq!(ed.matching_bracket(4), Some((3, 5)));
     assert_eq!(ed.matching_bracket(0), None);
+}
+
+#[test]
+fn up_and_down_by_rows() {
+    // The first line wraps into "aaaa bbbb " and "cccc dddd".
+    let mut ed = editor("aaaa bbbb cccc dddd\nx|");
+    let map = DisplayMap::for_editor(&ed, Some(10));
+    ed.move_rows(&map, -1, false);
+    assert_eq!(show(&ed), "aaaa bbbb c|ccc dddd\nx");
+    ed.move_rows(&map, -1, false);
+    assert_eq!(show(&ed), "a|aaa bbbb cccc dddd\nx");
+    ed.move_rows(&map, 2, true);
+    assert_eq!(show(&ed), "a[aaa bbbb cccc dddd\nx]");
+    // Aiming past the end of a row that wraps: the cursor stays on that
+    // row instead of landing at the start of the next.
+    let mut ed = editor("aaaa bbbb cccc dddd\nzzzzzzzzzz|");
+    let map = DisplayMap::for_editor(&ed, Some(10));
+    ed.move_rows(&map, -2, false);
+    assert_eq!(show(&ed), "aaaa bbbb| cccc dddd\nzzzzzzzzzz");
 }

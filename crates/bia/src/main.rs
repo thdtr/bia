@@ -13,6 +13,7 @@ mod code_view;
 mod fonts;
 mod icons;
 mod keys;
+mod markdown;
 mod syntax;
 mod tabs;
 mod ui;

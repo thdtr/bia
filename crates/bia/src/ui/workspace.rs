@@ -207,6 +207,7 @@ fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a
         EDITOR_ID,
         &buffer.editor,
         &buffer.highlights,
+        &buffer.display,
         app.syntax_context(),
         c,
         Message::Input,

@@ -26,7 +26,7 @@ use iced::{
     Size, Theme, Vector, font, keyboard, window,
 };
 use row::RowText;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
@@ -72,6 +72,7 @@ pub struct CodeView<'a, Message> {
     id: widget::Id,
     editor: &'a Editor,
     highlights: &'a RefCell<Highlights>,
+    display: &'a RefCell<DisplayMap>,
     syntax: syntax::Context<'a>,
     matches: &'a [Range<usize>],
     current_match: Option<usize>,
@@ -95,6 +96,7 @@ impl<'a, Message> CodeView<'a, Message> {
         id: &'static str,
         editor: &'a Editor,
         highlights: &'a RefCell<Highlights>,
+        display: &'a RefCell<DisplayMap>,
         syntax: syntax::Context<'a>,
         colors: Colors,
         on_input: impl Fn(Input) -> Message + 'a,
@@ -104,6 +106,7 @@ impl<'a, Message> CodeView<'a, Message> {
             id: widget::Id::new(id),
             editor,
             highlights,
+            display,
             syntax,
             matches: &[],
             current_match: None,
@@ -168,14 +171,9 @@ enum Bar {
     Horizontal { grab: f32 },
 }
 
-/// What a display map was built for: file, revision, wrap width, tab width.
-type DisplayKey = (u64, u64, Option<usize>, usize);
-
 #[derive(Default)]
 struct Cache {
     paragraphs: HashMap<u64, Paragraph>,
-    /// The display map, and what it was built for.
-    display: Option<(DisplayKey, DisplayMap)>,
     char_width: Option<((Font, u32, u32), f32)>,
     /// The widest line in cells, by editor revision and file.
     widest: Option<((u64, u64), usize)>,
@@ -267,15 +265,15 @@ impl<Message> CodeView<'_, Message> {
         }
     }
 
-    fn display<'c>(&self, m: &Metrics, cache: &'c mut Cache) -> &'c DisplayMap {
+    /// The file's rows, brought up to date first if the text or the width
+    /// changed. The map lives in the buffer, where Up and Down use it too.
+    fn display(&self, m: &Metrics) -> Ref<'_, DisplayMap> {
         let wrap =
             self.wrap.then(|| ((m.text_width() - SCROLLBAR) / m.char).floor().max(8.0) as usize);
-        let key = (self.key, self.editor.revision(), wrap, self.editor.tab_width);
-        if cache.display.as_ref().is_none_or(|(k, _)| *k != key) {
-            let map = DisplayMap::new(self.editor.rope(), self.editor.tab_width, wrap);
-            cache.display = Some((key, map));
+        if !self.display.borrow().is_current(self.editor, wrap) {
+            self.display.borrow_mut().sync(self.editor, wrap);
         }
-        &cache.display.as_ref().expect("just set").1
+        self.display.borrow()
     }
 
     /// The widest line, in cells. Measured over the whole file once; after
@@ -309,7 +307,7 @@ impl<Message> CodeView<'_, Message> {
 
     /// How far the view can scroll.
     fn max_offset(&self, m: &Metrics, cache: &mut Cache) -> Vector {
-        let rows = self.display(m, cache).row_count() as f32;
+        let rows = self.display(m).row_count() as f32;
         let content = PAD_TOP + rows * m.line;
         // A file that fits doesn't scroll at all; a longer one can scroll
         // until its last line is halfway up.
@@ -333,14 +331,13 @@ impl<Message> CodeView<'_, Message> {
 
     /// The text offset under `point` (relative to the widget).
     fn hit(&self, point: Point, m: &Metrics, state: &State) -> usize {
-        let mut cache = state.cache.borrow_mut();
-        let display = self.display(m, &mut cache);
+        let display = self.display(m);
         let y = point.y - PAD_TOP + state.offset.y;
         let row = (y / m.line).floor().max(0.0) as usize;
         let row = row.min(display.row_count().saturating_sub(1));
         let line = display.line_of_row(row);
         let text = self.editor.line(line);
-        let r = self.row(display, row, &text);
+        let r = self.row(&display, row, &text);
         let row_text = RowText::new(&text, r.start, r.end, self.editor.tab_width);
         let x = point.x - m.text_x + state.offset.x;
         let column = if x <= 0.0 {
@@ -364,12 +361,12 @@ impl<Message> CodeView<'_, Message> {
 
     /// Where the cursor at `at` is drawn, relative to the content's origin
     /// (before scrolling): its row's top and its x.
-    fn caret(&self, at: usize, m: &Metrics, cache: &mut Cache) -> (usize, f32) {
+    fn caret(&self, at: usize, m: &Metrics) -> (usize, f32) {
         let (line, col) = self.editor.line_col(at);
         let text = self.editor.line(line);
-        let display = self.display(m, cache);
+        let display = self.display(m);
         let row = display.first_row(line) + display.row_in_line(&text, col);
-        let r = self.row(display, row, &text);
+        let r = self.row(&display, row, &text);
         let row_text = RowText::new(&text, r.start, r.end, self.editor.tab_width);
         let index = row_text.text[..row_text.to_text(col)].graphemes(true).count();
         let paragraph = self.paragraph(&row_text.text, &[]);
@@ -422,12 +419,12 @@ impl<Message> CodeView<'_, Message> {
         if state.center != self.center {
             state.center = self.center;
             state.followed = marker;
-            let (row, x) = self.caret(primary.head, m, &mut state.cache.borrow_mut());
+            let (row, x) = self.caret(primary.head, m);
             state.offset.y = PAD_TOP + row as f32 * m.line - m.height / 2.0 + m.line / 2.0;
             state.offset.x = (x - m.text_width() + 4.0 * m.char).max(0.0);
         } else if state.followed != marker {
             state.followed = marker;
-            let (row, x) = self.caret(primary.head, m, &mut state.cache.borrow_mut());
+            let (row, x) = self.caret(primary.head, m);
             let top = PAD_TOP + row as f32 * m.line;
             let margin = m.line;
             if top - margin < state.offset.y {
@@ -779,7 +776,7 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
         let max = self.max_offset(&m, &mut cache);
         let offset =
             Vector::new(state.offset.x.clamp(0.0, max.x), state.offset.y.clamp(0.0, max.y));
-        let display = self.display(&m, &mut cache).clone();
+        let display = self.display(&m);
 
         let first = ((offset.y - PAD_TOP) / m.line).floor().max(0.0) as usize;
         let last = (((offset.y - PAD_TOP + m.height) / m.line).ceil() as usize)
@@ -1098,7 +1095,7 @@ impl<Message> CodeView<'_, Message> {
         bounds: Rectangle,
     ) -> InputMethod<&'b str> {
         let primary = self.editor.selections().primary();
-        let (row, x) = self.caret(primary.head, m, &mut state.cache.borrow_mut());
+        let (row, x) = self.caret(primary.head, m);
         let position = Point::new(
             bounds.x + m.text_x + x - state.offset.x,
             bounds.y + PAD_TOP + row as f32 * m.line - state.offset.y,

@@ -5,7 +5,7 @@ use crate::code_view::Input;
 use crate::keys::Command;
 use crate::syntax::Highlights;
 use bia_core::document::{Document, LineEnding};
-use bia_core::editor::Editor;
+use bia_core::editor::{DisplayMap, Editor, Motion};
 use bia_core::indent::Indent;
 use iced::widget::markdown;
 use std::cell::RefCell;
@@ -25,6 +25,9 @@ pub struct Buffer {
     pub markdown: Option<markdown::Content>,
     markdown_revision: u64,
     pub highlights: RefCell<Highlights>,
+    /// The rows the text takes on screen, kept up to date by the view
+    /// (which knows the width) and used here for Up and Down.
+    pub display: RefCell<DisplayMap>,
     /// A new value asks the view to center the cursor (go to line).
     pub center: u64,
 }
@@ -43,7 +46,9 @@ impl Buffer {
     pub fn new(doc: Document, syntax: String, indent: Indent) -> Self {
         let mut editor = Editor::new(&doc.text, indent);
         editor.syntax = syntax;
+        let display = RefCell::new(DisplayMap::for_editor(&editor, None));
         Self {
+            display,
             editor,
             line_ending: doc.line_ending,
             mixed_endings: doc.mixed_endings,
@@ -128,6 +133,21 @@ impl Buffer {
     }
 
     fn command(&mut self, command: Command) -> Reply {
+        // With long lines wrapped, Up and Down go by rows on screen.
+        let rows = match command {
+            Command::Move(Motion::Up, extend) => Some((-1, extend)),
+            Command::Move(Motion::Down, extend) => Some((1, extend)),
+            Command::Move(Motion::PageUp(n), extend) => Some((-(n as isize), extend)),
+            Command::Move(Motion::PageDown(n), extend) => Some((n as isize, extend)),
+            _ => None,
+        };
+        if let Some((delta, extend)) = rows {
+            let mut map = self.display.borrow_mut();
+            let wrap = map.wrap();
+            map.sync(&self.editor, wrap);
+            self.editor.move_rows(&map, delta, extend);
+            return Reply::None;
+        }
         let ed = &mut self.editor;
         match command {
             Command::Move(motion, extend) => ed.move_cursors(motion, extend),
@@ -225,7 +245,8 @@ impl Buffer {
     }
 
     pub fn set_preview(&mut self, on: bool) {
-        self.markdown = on.then(|| markdown::Content::parse(&self.text()));
+        self.markdown =
+            on.then(|| markdown::Content::parse(&crate::markdown::for_preview(&self.text())));
         self.markdown_revision = self.revision();
     }
 

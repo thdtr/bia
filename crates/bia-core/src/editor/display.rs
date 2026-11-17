@@ -3,6 +3,7 @@
 //! there is one. Widths are in display cells (see [`char_width`]).
 
 use super::motion::char_width;
+use super::{Changed, Editor};
 use ropey::Rope;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +12,10 @@ pub struct DisplayMap {
     /// Columns per row, when wrapping.
     wrap: Option<usize>,
     lines: usize,
+    /// The editor revision this map is for.
+    revision: u64,
+    /// With wrapping, the rows of each line.
+    rows: Vec<usize>,
     /// With wrapping, the rows before each line; one more entry than lines.
     rows_before: Vec<usize>,
 }
@@ -19,24 +24,84 @@ impl DisplayMap {
     pub fn new(rope: &Rope, tab_width: usize, wrap: Option<usize>) -> Self {
         let lines = rope.len_lines();
         let wrap = wrap.map(|w| w.max(8));
-        let mut rows_before = Vec::new();
-        if let Some(width) = wrap {
-            rows_before.reserve(lines + 1);
-            let mut total = 0;
-            for line in rope.lines() {
-                rows_before.push(total);
-                let text = line.to_string();
-                total += wrap_points(text.trim_end_matches('\n'), width, tab_width).len();
-            }
-            rows_before.push(total);
+        let rows = match wrap {
+            Some(width) => rope
+                .lines()
+                .map(|line| {
+                    let text = line.to_string();
+                    wrap_points(text.trim_end_matches('\n'), width, tab_width).len()
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        let mut map = Self { tab_width, wrap, lines, revision: 0, rows, rows_before: Vec::new() };
+        map.sum_from(0);
+        map
+    }
+
+    pub fn for_editor(editor: &Editor, wrap: Option<usize>) -> Self {
+        let mut map = Self::new(editor.rope(), editor.tab_width, wrap);
+        map.revision = editor.revision();
+        map
+    }
+
+    /// Brings the map up to date with `editor`, wrapping at `wrap`. After
+    /// an edit, only the lines it touched are measured again.
+    pub fn sync(&mut self, editor: &Editor, wrap: Option<usize>) {
+        let wrap = wrap.map(|w| w.max(8));
+        if wrap != self.wrap || editor.tab_width != self.tab_width {
+            *self = Self::for_editor(editor, wrap);
+            return;
         }
-        Self { tab_width, wrap, lines, rows_before }
+        match editor.changed_lines(self.revision) {
+            Changed::Nothing => {}
+            Changed::Everything => *self = Self::for_editor(editor, wrap),
+            Changed::Lines { first, old_end, new_end } => {
+                self.lines = editor.line_count();
+                self.revision = editor.revision();
+                let Some(width) = wrap else { return };
+                let measured: Vec<usize> = (first..new_end)
+                    .map(|l| wrap_points(&editor.line(l), width, self.tab_width).len())
+                    .collect();
+                let old_end = old_end.clamp(first, self.rows.len());
+                self.rows.splice(first..old_end, measured);
+                if self.rows.len() == self.lines {
+                    self.sum_from(first);
+                } else {
+                    *self = Self::for_editor(editor, wrap);
+                }
+            }
+        }
+        self.revision = editor.revision();
+    }
+
+    /// Whether the map already matches `editor` wrapped at `wrap`.
+    pub fn is_current(&self, editor: &Editor, wrap: Option<usize>) -> bool {
+        self.revision == editor.revision()
+            && self.wrap == wrap.map(|w| w.max(8))
+            && self.tab_width == editor.tab_width
+    }
+
+    /// Recomputes `rows_before` from line `first` on.
+    fn sum_from(&mut self, first: usize) {
+        if self.wrap.is_none() {
+            return;
+        }
+        let first = first.min(self.rows_before.len().saturating_sub(1));
+        self.rows_before.truncate(first + 1);
+        let mut total = self.rows_before.last().copied().unwrap_or(0);
+        if self.rows_before.is_empty() {
+            self.rows_before.push(0);
+        }
+        for &rows in &self.rows[first..] {
+            total += rows;
+            self.rows_before.push(total);
+        }
     }
 
     pub fn wrap(&self) -> Option<usize> {
         self.wrap
     }
-
     pub fn row_count(&self) -> usize {
         match self.wrap {
             Some(_) => self.rows_before[self.lines],

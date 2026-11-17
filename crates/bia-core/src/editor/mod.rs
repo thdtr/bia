@@ -11,6 +11,7 @@ mod transaction;
 mod undo;
 
 pub use display::DisplayMap;
+
 pub use motion::{char_width, column_for_display, display_column, next_grapheme, prev_grapheme};
 pub use selection::{Selection, Selections};
 pub use transaction::{Assoc, Edit, Transaction};
@@ -80,9 +81,35 @@ pub struct Editor {
     copied_lines: Option<String>,
     /// Ctrl+D started from a cursor in a word, so it matches whole words.
     next_whole_word: bool,
-    /// Recent changes: the revision each made and the first line it
-    /// touched, so caches (highlighting) redo only what changed.
-    changes: Vec<(u64, usize)>,
+    /// Recent changes, so caches (highlighting, wrapping) redo only what
+    /// changed.
+    changes: Vec<Change>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Change {
+    revision: u64,
+    /// First line touched; the text before it is as it was.
+    first: usize,
+    /// The line after the last one touched, in the new text.
+    end: usize,
+    lines_before: usize,
+    lines_after: usize,
+}
+
+/// Which lines changed since some revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Changed {
+    Nothing,
+    /// Lines `first..old_end` of the old text are now `first..new_end`;
+    /// the lines after them only moved.
+    Lines {
+        first: usize,
+        old_end: usize,
+        new_end: usize,
+    },
+    /// Older than the log: assume everything.
+    Everything,
 }
 
 /// Recent changes kept in [`Editor::first_changed_line`]'s log.
@@ -118,20 +145,63 @@ impl Editor {
     /// The first line that may differ from the text at revision `since`,
     /// or `None` if nothing changed. Too old a revision gives line 0.
     pub fn first_changed_line(&self, since: u64) -> Option<usize> {
-        if since >= self.revision {
-            return None;
+        match self.changed_lines(since) {
+            Changed::Nothing => None,
+            Changed::Lines { first, .. } => Some(first),
+            Changed::Everything => Some(0),
         }
-        let covered = self.changes.first().is_some_and(|&(rev, _)| rev <= since + 1);
-        if !covered {
-            return Some(0);
-        }
-        self.changes.iter().filter(|&&(rev, _)| rev > since).map(|&(_, line)| line).min()
     }
 
-    fn changed(&mut self, from: usize) {
+    /// Which lines changed since revision `since`.
+    pub fn changed_lines(&self, since: u64) -> Changed {
+        if since >= self.revision {
+            return Changed::Nothing;
+        }
+        let covered = self.changes.first().is_some_and(|c| c.revision <= since + 1);
+        if !covered {
+            return Changed::Everything;
+        }
+        let recent: Vec<&Change> = self.changes.iter().filter(|c| c.revision > since).collect();
+        match recent.as_slice() {
+            [] => Changed::Nothing,
+            [c] => Changed::Lines {
+                first: c.first,
+                old_end: (c.end + c.lines_before).saturating_sub(c.lines_after).max(c.first),
+                new_end: c.end,
+            },
+            // Several: one range covering them all, in the newest text.
+            [c, rest @ ..] => {
+                let (mut first, mut end) = (c.first, c.end);
+                for c in rest {
+                    let growth = c.lines_after as isize - c.lines_before as isize;
+                    // What's after this change's lines moved with it.
+                    let moved = if end > c.first { end.saturating_add_signed(growth) } else { end };
+                    end = moved.max(c.end);
+                    first = first.min(c.first);
+                }
+                let before = c.lines_before;
+                let after = self.line_count();
+                Changed::Lines {
+                    first,
+                    old_end: (end + before).saturating_sub(after).max(first),
+                    new_end: end.max(first),
+                }
+            }
+        }
+    }
+
+    /// Logs a change to lines `first..end` (of the new text).
+    fn changed(&mut self, first: usize, end: usize, lines_before: usize) {
         self.revision += 1;
-        let line = self.rope.byte_to_line(from.min(self.len()));
-        self.changes.push((self.revision, line));
+        let lines_after = self.line_count();
+        let first = first.min(lines_after);
+        self.changes.push(Change {
+            revision: self.revision,
+            first,
+            end: end.clamp(first, lines_after),
+            lines_before,
+            lines_after,
+        });
         if self.changes.len() > CHANGE_LOG {
             self.changes.drain(..self.changes.len() - CHANGE_LOG);
         }
@@ -367,6 +437,58 @@ impl Editor {
         Selection { anchor, head, goal: Some(goal) }
     }
 
+    /// Up and Down (and by pages) when long lines wrap: by rows on screen,
+    /// keeping the column within the row. Without wrapping, by lines.
+    pub fn move_rows(&mut self, map: &DisplayMap, delta: isize, extend: bool) {
+        self.undo.seal();
+        self.next_whole_word = false;
+        let next = self.selections.map(|s| match map.wrap() {
+            Some(_) => self.vertical_rows(map, s, delta, extend),
+            None => self.vertical(s, delta, extend),
+        });
+        self.selections = next;
+    }
+
+    fn vertical_rows(
+        &self,
+        map: &DisplayMap,
+        s: Selection,
+        delta: isize,
+        extend: bool,
+    ) -> Selection {
+        let tab = self.tab_width;
+        let (line, col) = self.line_col(s.head);
+        let text = self.line(line);
+        let starts = map.row_starts(&text);
+        let k = starts.partition_point(|&x| x <= col).saturating_sub(1);
+        let base = display_column(&text, starts[k], tab);
+        let goal = s.goal.unwrap_or_else(|| display_column(&text, col, tab) - base);
+        let target = (map.first_row(line) + k) as isize + delta;
+        let head = if target < 0 {
+            0
+        } else if target as usize >= map.row_count() {
+            self.len()
+        } else {
+            let row = target as usize;
+            let line = map.line_of_row(row);
+            let text = self.line(line);
+            let starts = map.row_starts(&text);
+            let k = (row - map.first_row(line)).min(starts.len() - 1);
+            let start = starts[k];
+            let base = display_column(&text, start, tab);
+            let mut column = column_for_display(&text, base + goal, tab).max(start);
+            // The end of a row that wraps is the start of the next one.
+            if let Some(&end) = starts.get(k + 1)
+                && column >= end
+            {
+                column = text[..end].char_indices().next_back().map_or(start, |(i, _)| i);
+            }
+            self.line_start(line) + column
+        };
+        let anchor = if extend { s.anchor } else { head };
+        Selection { anchor, head, goal: Some(goal) }
+    }
+
     /// The display column of `at`: where it is on screen in its line.
     pub fn display_column(&self, at: usize) -> usize {
         let (line, col) = self.line_col(at);
@@ -519,25 +641,30 @@ impl Editor {
     // ── Undo ─────────────────────────────────────────────────────────────
 
     pub fn undo(&mut self) -> bool {
-        match self.undo.undo(&mut self.rope) {
-            Some((selections, from)) => {
-                self.changed(from);
-                self.selections = selections.clamped(self.len());
-                true
-            }
-            None => false,
+        let Some((txs, selections)) = self.undo.undo() else { return false };
+        for tx in &txs {
+            self.apply_logged(tx);
         }
+        self.selections = selections.clamped(self.len());
+        true
     }
 
     pub fn redo(&mut self) -> bool {
-        match self.undo.redo(&mut self.rope) {
-            Some((selections, from)) => {
-                self.changed(from);
-                self.selections = selections.clamped(self.len());
-                true
-            }
-            None => false,
+        let Some((txs, selections)) = self.undo.redo() else { return false };
+        for tx in &txs {
+            self.apply_logged(tx);
         }
+        self.selections = selections.clamped(self.len());
+        true
+    }
+
+    /// Applies `tx` to the text and logs which lines it changed.
+    fn apply_logged(&mut self, tx: &Transaction) {
+        let Some(last) = tx.edits().len().checked_sub(1) else { return };
+        let lines = self.line_count();
+        tx.apply(&mut self.rope);
+        let end = tx.new_starts()[last] + tx.edits()[last].text.len();
+        self.changed(self.line_of(tx.edits()[0].range.start), self.line_of(end) + 1, lines);
     }
 
     /// Ends the current undo step.
@@ -562,8 +689,7 @@ impl Editor {
         }
         let before = self.selections.clone();
         let inverse = tx.invert(&self.rope);
-        tx.apply(&mut self.rope);
-        self.changed(tx.edits()[0].range.start);
+        self.apply_logged(&tx);
         let next = after(self, &tx).clamped(self.len());
         self.undo.record(tx, inverse, &before, &next, kind, Instant::now());
         self.selections = next;

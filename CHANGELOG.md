@@ -32,7 +32,8 @@ Notable changes to BIA are listed here. The format is based on
 - `Ctrl+C` and `Ctrl+X` with nothing selected take the whole line, and pasting it
   puts it above the cursor's line.
 - `Ctrl+Backspace` and `Ctrl+Delete` delete a word.
-- `"soft_wrap": true` wraps long lines at the edge of the window.
+- `"soft_wrap": true` wraps long lines at the edge of the window. Up and Down then
+  move by rows on screen.
 
 ### Changed
 
@@ -47,6 +48,8 @@ Notable changes to BIA are listed here. The format is based on
 
 ### Fixed
 
+- The Markdown preview showed indented code blocks as an empty box, with their text
+  as a paragraph after it.
 - Find ignored case only for ASCII letters: `É` didn't find `é`.
 - A file that fits in the editor no longer shows a scrollbar or scrolls a little.
 

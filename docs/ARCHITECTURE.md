@@ -99,7 +99,8 @@ keyboard / mouse ──► iced ──► Message ──► Bia::update ──�
   word, and knows when the text is back to how it was saved.
 * **Drawing.** The widget lays out only the rows on screen, one `Paragraph` each,
   cached by content. `DisplayMap` turns lines into rows: one per line, or several when
-  `soft_wrap` is on. Tabs become spaces up to the next stop of `tab_size`.
+  `soft_wrap` is on. It lives in the buffer, so Up and Down move by rows too, and
+  after an edit it measures again only the lines the editor's change log names. Tabs become spaces up to the next stop of `tab_size`.
   Selections, the current line, search matches and the bracket pair are rectangles
   under the text; cursors are drawn over it. The widget scrolls by itself, follows
   the cursor and remembers each tab's place.
@@ -146,10 +147,6 @@ few things an editor can't really do without:
 
 ## Known limitations
 
-* **Up and Down move by line, not by row.** With `soft_wrap`, a wrapped line is one
-  step.
-* **Wrapping a very long file costs a pass over it per edit.** Without `soft_wrap`,
-  nothing is measured that isn't on screen.
 * **Mixed line endings aren't kept.** A file that mixes LF and CRLF is saved with the
   more common one. The status bar says so before you save.
 * **Bare CR line breaks aren't supported.** These files aren't opened.

@@ -20,6 +20,9 @@ path = "src/main.rs"
 [dependencies]
 bia-core.workspace = true
 iced = { version = "0.14", features = ["markdown", "advanced", "svg"] }
+# The same Markdown parser iced uses: finds indented code blocks for the
+# preview (see src/markdown.rs). No new crate in the build.
+pulldown-cmark = { version = "0.12", default-features = false }
 # Native "Open folder" dialog (XDG portal on Linux, no GTK).
 rfd = "0.17"
 ropey = { version = "1.6", default-features = false, features = ["simd"] }
