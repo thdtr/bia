@@ -257,7 +257,9 @@ fn code_view<'a>(
         .padding(EDITOR_PADDING)
         .width(text_width.max(width - gutter_width))
         .height(Length::Shrink)
-        .min_height(height)
+        // iced adds the padding on top of min_height, so a file that fits
+        // would otherwise still overflow by the padding and show a scrollbar.
+        .min_height((height - EDITOR_PADDING.y()).max(0.0))
         .wrapping(Wrapping::None)
         .highlight_with::<Highlighter>(app.highlighter_settings(buffer), |format, _| *format)
         .style(style::editor(c));

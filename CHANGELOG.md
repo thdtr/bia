@@ -6,6 +6,10 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- A file that fits in the editor no longer shows a scrollbar or scrolls a little.
+
 ## [0.2.0] - 2026-11-17
 
 ### Added
