@@ -15,4 +15,4 @@ weight = 8
 
 O BIA ainda não tem terminal, integração com git, depurador, suporte ao Language Server Protocol (LSP), plugins nem recursos de IA. Alguns deles podem ser adicionados no futuro. Como cada um aumentaria bastante o código (só o suporte a LSP dobraria seu tamanho, aproximadamente), uma proposta deve começar por uma [issue](https://github.com/thdtr/bia/issues), para ser discutida antes de qualquer código.
 
-Recursos que dependem de rede, como telemetria, atualização automática, contas ou sincronização, não serão adicionados. Veja [Sem código de rede](@/docs/network.pt-br.md).
+Recursos que dependem de rede, como telemetria, atualização automática, contas ou sincronização, não se encaixam na política de rede do BIA. Eles podem funcionar melhor como uma ferramenta à parte. Veja [Sem código de rede](@/docs/network.pt-br.md).

@@ -12,8 +12,8 @@ Issues and pull requests in Portuguese are fine as well.
   `bia --version`.
 * For a feature, open an issue first. Some things
   [aren't in BIA yet](docs/ARCHITECTURE.md#not-in-bia-yet) and need a conversation
-  before any code. Anything that needs the network won't be accepted
-  ([docs/SEALED.md](docs/SEALED.md)).
+  before any code. Features that need the network don't fit in BIA
+  ([docs/SEALED.md](docs/SEALED.md)), but they often work as a separate tool.
 * Themes, grammars and translations are a good way to start. See below.
 
 ## Development

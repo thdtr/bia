@@ -7,7 +7,7 @@ body:
       value: |
         BIA tries to stay small, so new features start with a conversation here.
         [docs/ARCHITECTURE.md](https://github.com/thdtr/bia/blob/main/docs/ARCHITECTURE.md#not-in-bia-yet) lists what isn't in BIA yet.
-        Features that need the network won't be added ([docs/SEALED.md](https://github.com/thdtr/bia/blob/main/docs/SEALED.md)).
+        Features that need the network don't fit in BIA ([docs/SEALED.md](https://github.com/thdtr/bia/blob/main/docs/SEALED.md)), but we're glad to help find another way.
   - type: textarea
     id: problem
     attributes:

@@ -17,7 +17,7 @@ Two checks run in CI on every pull request:
 1. [`deny.toml`](https://github.com/thdtr/bia/blob/main/deny.toml) makes `cargo deny check bans` fail if an HTTP client or server, a TLS library, a WebSocket, QUIC or gRPC crate, or a telemetry SDK appears anywhere in the dependency tree, including indirect dependencies.
 2. [`crates/bia-core/tests/sealed.rs`](https://github.com/thdtr/bia/blob/main/crates/bia-core/tests/sealed.rs) searches every `.rs` file in the repository for `std::net`, `TcpStream`, `UdpSocket`, networking modules of async runtimes and the names of networking crates. It also checks `Cargo.lock`.
 
-Pull requests that add network access are not accepted, whatever the feature.
+For this reason, pull requests that add network access cannot be merged. Proposals that involve the network are best discussed in an [issue](https://github.com/thdtr/bia/issues) first, where alternatives can be considered.
 
 ### Running the checks
 
@@ -51,4 +51,4 @@ BIA's own code never opens a network connection, makes an HTTP request or perfor
 
 ## Features that need the network
 
-This policy will not change. A feature that needs the network is better served by a separate tool.
+The absence of network code is a core principle of BIA, so features that depend on the network are not added to the editor. Many of them can work well as separate tools used alongside BIA, and such ideas are welcome in an [issue](https://github.com/thdtr/bia/issues).

@@ -15,4 +15,4 @@ weight = 8
 
 BIA does not currently include a terminal, git integration, a debugger, Language Server Protocol (LSP) support, plugins or AI features. Some of these may be added in the future. Because each one would add significantly to the code (LSP support alone would roughly double it), a proposal should start as an [issue](https://github.com/thdtr/bia/issues), so that it can be discussed before any code is written.
 
-Features that require the network, such as telemetry, automatic updates, accounts or sync, will not be added. See [No network code](@/docs/network.md).
+Features that require the network, such as telemetry, automatic updates, accounts or sync, do not fit BIA’s network policy. They may be better served by a separate tool. See [No network code](@/docs/network.md).

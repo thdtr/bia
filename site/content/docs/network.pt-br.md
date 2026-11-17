@@ -17,7 +17,7 @@ Duas verificações rodam no CI a cada pull request:
 1. O [`deny.toml`](https://github.com/thdtr/bia/blob/main/deny.toml) faz o `cargo deny check bans` falhar se um cliente ou servidor HTTP, uma biblioteca de TLS, um crate de WebSocket, QUIC ou gRPC, ou um SDK de telemetria aparecer em qualquer ponto da árvore de dependências, inclusive nas indiretas.
 2. O [`crates/bia-core/tests/sealed.rs`](https://github.com/thdtr/bia/blob/main/crates/bia-core/tests/sealed.rs) procura em todos os arquivos `.rs` do repositório por `std::net`, `TcpStream`, `UdpSocket`, módulos de rede de runtimes assíncronos e nomes de crates de rede. Ele também verifica o `Cargo.lock`.
 
-Pull requests que adicionam acesso à rede não são aceitos, seja qual for o recurso.
+Por isso, pull requests que adicionam acesso à rede não podem ser incorporados. Propostas que envolvem rede devem ser discutidas antes numa [issue](https://github.com/thdtr/bia/issues), onde é possível buscar alternativas.
 
 ### Executando as verificações
 
@@ -51,4 +51,4 @@ O código do BIA nunca abre uma conexão de rede, nunca faz uma requisição HTT
 
 ## Recursos que precisam de rede
 
-Essa política não vai mudar. Um recurso que precisa de rede funciona melhor como uma ferramenta à parte.
+A ausência de código de rede é um princípio central do BIA, por isso recursos que dependem de rede não entram no editor. Muitos deles funcionam bem como ferramentas à parte, usadas junto com o BIA, e ideias assim são bem-vindas numa [issue](https://github.com/thdtr/bia/issues).

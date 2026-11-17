@@ -3,8 +3,8 @@
 //! This test scans every Rust source file in the repository for the APIs
 //! and crates that open network connections. `deny.toml` enforces the same
 //! rule for the whole dependency graph. If you are reading this because the
-//! test failed: features that need the network are out of scope for BIA.
-//! See docs/SEALED.md.
+//! test failed: features that need the network don't fit in BIA, but they
+//! often work as a separate tool. See docs/SEALED.md.
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -22,7 +22,8 @@ Two checks run in CI on every pull request:
    `.rs` file in the repository for `std::net`, `TcpStream`, `UdpSocket`, async runtime
    networking modules and the names of networking crates. It also checks `Cargo.lock`.
 
-Pull requests that add networking won't be merged, whatever the feature
+That's why a pull request that adds networking can't be merged, even for a good idea.
+Open an issue first and we'll look for another way
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ## Checking it yourself
@@ -69,7 +70,8 @@ Some things are outside that:
   gh attestation verify bia-x86_64-unknown-linux-gnu.tar.gz --repo thdtr/bia
   ```
 
-## Adding network features
+## Features that need the network
 
-This isn't going to change. A feature that needs the network is better off as a
-separate tool.
+BIA is built around having no network code, so these features don't fit inside the
+editor. Many of them work well as a separate tool next to BIA. If you have one in mind,
+open an issue and we'll think it through together.

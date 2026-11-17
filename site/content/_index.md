@@ -26,7 +26,7 @@ features = [
 
 left_out_title = "What it doesn’t do yet"
 left_out = ["Terminal", "Git", "Debugger", "LSP", "Plugins", "AI"]
-left_out_note = "Some may come later. Anything that needs the network won’t."
+left_out_note = "Some may come later. Only what needs the network stays out."
 
 saves_title = "Saving never breaks a file"
 saves_lede = "BIA writes a copy first and swaps it in once it’s safely on disk."
