@@ -16,7 +16,6 @@ OUT = ROOT / "docs" / "social-preview.png"
 
 # Colors from the Noite theme (assets/themes/noite.json).
 PANEL = "#121116"
-BORDER = "#2b2931"
 TEXT = "#dcd6cb"
 MUTED = "#77717f"
 INK = "#ece6da"
@@ -46,10 +45,10 @@ def main():
                 "-fill", MUTED, "-pointsize", "23",
                 "-annotate", "+84+430", "A code editor written in Rust,",
                 "-annotate", "+84+462", "with no network code.",
-                # The screenshot runs off the right edge.
-                "(", str(ROOT / "docs" / "screenshot.png"), "-resize", "72%",
-                "-bordercolor", BORDER, "-border", "1", ")",
-                "-geometry", "+640+86", "-composite",
+                # The screenshot (a macOS window with its shadow) runs off the
+                # right edge.
+                "(", str(ROOT / "docs" / "screenshot.png"), "-resize", "930x", ")",
+                "-geometry", "+600+60", "-composite",
                 "-depth", "8",
                 str(OUT),
             ],

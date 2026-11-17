@@ -13,7 +13,7 @@ O BIA é um editor de código pequeno para Linux, macOS e Windows, feito em Rust
 Árvore de arquivos, destaque de sintaxe, prévia de Markdown, temas e um arquivo de
 configuração. Só isso.
 
-![O BIA editando um dos próprios arquivos](docs/screenshot.png)
+![O BIA no macOS, com um projeto Next.js aberto](docs/screenshot.png)
 
 ## Instalação
 
