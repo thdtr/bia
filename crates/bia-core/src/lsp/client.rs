@@ -3,6 +3,9 @@
 //!
 //! A thread reads what the server sends and hands it to a callback as an
 //! [`Event`]. Requests the server makes of BIA are answered right there.
+//! Another thread does the writing: a server busy with something else
+//! stops reading, and a whole file doesn't fit in a pipe, so writing from
+//! the UI thread could freeze the window.
 
 use super::text::Encoding;
 use serde_json::{Value, json};
@@ -10,7 +13,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 
 pub type ServerId = usize;
 
@@ -40,7 +43,8 @@ pub enum Event {
     },
 }
 
-type Writer = Arc<Mutex<Box<dyn Write + Send>>>;
+/// Messages for the writing thread, in the order to send them.
+type Writer = mpsc::Sender<Value>;
 
 pub struct Client {
     pub id: ServerId,
@@ -98,11 +102,20 @@ impl Client {
         root: &Path,
         sink: impl Fn(Event) + Send + 'static,
     ) -> Self {
-        let writer: Writer = Arc::new(Mutex::new(Box::new(writer)));
-        let client =
-            Self { id, writer: Arc::clone(&writer), next_id: AtomicU64::new(1), child: None };
+        let (queue, messages) = mpsc::channel::<Value>();
+        std::thread::spawn(move || {
+            let mut writer = writer;
+            for message in messages {
+                // A server that went away shows up as `Exited` from the reader.
+                if write_message(&mut writer, &message).is_err() {
+                    break;
+                }
+            }
+        });
+        let writer = queue.clone();
+        let client = Self { id, writer: queue, next_id: AtomicU64::new(1), child: None };
         let root_uri = super::text::uri(root);
-        client.send(&json!({
+        client.send(json!({
             "jsonrpc": "2.0",
             "id": INITIALIZE,
             "method": "initialize",
@@ -118,23 +131,21 @@ impl Client {
         client
     }
 
-    fn send(&self, message: &Value) {
-        if let Ok(mut w) = self.writer.lock() {
-            // A server that went away shows up as `Exited` from the reader.
-            let _ = write_message(&mut *w, message);
-        }
+    /// Queues `message`; the writing thread sends it.
+    fn send(&self, message: Value) {
+        let _ = self.writer.send(message);
     }
 
     /// Sends a request; its answer comes back as an [`Event::Response`]
     /// with the returned id.
     pub fn request(&self, method: &str, params: Value) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
         id
     }
 
     pub fn notify(&self, method: &str, params: Value) {
-        self.send(&json!({ "jsonrpc": "2.0", "method": method, "params": params }));
+        self.send(json!({ "jsonrpc": "2.0", "method": method, "params": params }));
     }
 }
 
@@ -204,9 +215,7 @@ pub fn read_message(r: &mut impl BufRead) -> io::Result<Option<Value>> {
 
 fn read_loop(id: ServerId, mut reader: impl BufRead, writer: &Writer, sink: &dyn Fn(Event)) {
     let reply = |message: Value| {
-        if let Ok(mut w) = writer.lock() {
-            let _ = write_message(&mut **w, &message);
-        }
+        let _ = writer.send(message);
     };
     loop {
         let message = match read_message(&mut reader) {

@@ -158,7 +158,7 @@ few things an editor can't really do without:
 | Find options and find in files | Searching a project means case, whole words and regex, in every file. |
 | Comment, move, duplicate, delete lines; closing pairs | What hands expect in any code editor. Comment tokens are a table in `editing.rs`, since the built-in grammars don't carry them. |
 | Reopen the open files | `state.json` keeps each folder's tabs and cursors. |
-| Language servers | Errors and warnings underlined as you type, hover cards, completion, go to definition, format, rename, next problem. `bia-core/lsp` speaks JSON-RPC over the server's stdio from a thread; the app keeps one server per language and sends each file's full text 150 ms after edits stop. Positions are UTF-8 when the server agrees, UTF-16 otherwise. Servers are named in `language_servers`, never found or downloaded. |
+| Language servers | Errors and warnings underlined as you type, hover cards, completion, go to definition, format, rename, next problem. `bia-core/lsp` speaks JSON-RPC over the server's stdio, reading on one thread and writing on another, so a busy server never blocks the window. The app keeps one server per language and sends the edits 150 ms after typing stops: just the changed ranges when the server takes them (the editor keeps a journal of recent edits, `editor/splice.rs`), the whole text otherwise. Positions are UTF-8 when the server agrees, UTF-16 otherwise. Servers are named in `language_servers`, never found or downloaded. |
 | Terminal (`` Ctrl+` ``) | Your shell in a panel under the editor, starting in the open folder. It keeps running while hidden. `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste; `Ctrl+C` goes to the program. |
 | Git: changed lines, changed files, the branch | Marks beside the line numbers, colors in the tree, the branch in the status bar. Refreshed on save and when the window gets focus back. |
 | Backups of unsaved edits | Written to `backups/` two seconds after the last edit, removed on save or discard. A crash loses at most those two seconds. |
@@ -170,8 +170,9 @@ few things an editor can't really do without:
 * **Bare CR line breaks aren't supported.** These files aren't opened.
 * **Find in files doesn't replace yet.** Results open the file with the match
   selected, where `Ctrl+H` works.
-* **Language servers get the whole file** 150 ms after each pause in typing, not
-  just the changes. Simple and reliable; slower on very large files.
+* **Servers that only take whole files get the whole file** 150 ms after each pause in
+  typing. So does any server after more than 256 edits or 1 MB of typed text without
+  a pause.
 * **Input methods are untested.** Composed characters and IMEs for languages such as
   Japanese go through iced's input method support, but no one has tried them yet.
 * **Highlighting far into a long file can be wrong** inside a comment or string that

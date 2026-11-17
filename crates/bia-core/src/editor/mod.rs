@@ -7,6 +7,7 @@
 mod display;
 mod motion;
 mod selection;
+mod splice;
 mod transaction;
 mod undo;
 
@@ -14,6 +15,7 @@ pub use display::DisplayMap;
 
 pub use motion::{char_width, column_for_display, display_column, next_grapheme, prev_grapheme};
 pub use selection::{Selection, Selections};
+pub use splice::{Place, Splice};
 pub use transaction::{Assoc, Edit, Transaction};
 
 use crate::editing::{self, LineEdit};
@@ -84,6 +86,8 @@ pub struct Editor {
     /// Recent changes, so caches (highlighting, wrapping) redo only what
     /// changed.
     changes: Vec<Change>,
+    /// Recent edits as places in the text, for language servers.
+    journal: splice::Journal,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -139,6 +143,7 @@ impl Editor {
             copied_lines: None,
             next_whole_word: false,
             changes: Vec::new(),
+            journal: splice::Journal::default(),
         }
     }
 
@@ -150,6 +155,12 @@ impl Editor {
             Changed::Lines { first, .. } => Some(first),
             Changed::Everything => Some(0),
         }
+    }
+
+    /// The edits that take the text from revision `since` to now, in the
+    /// order to make them, or `None` if that's too far back to remember.
+    pub fn splices_since(&self, since: u64) -> Option<Vec<&Splice>> {
+        self.journal.since(since, self.revision)
     }
 
     /// Which lines changed since revision `since`.
@@ -662,6 +673,7 @@ impl Editor {
     fn apply_logged(&mut self, tx: &Transaction) {
         let Some(last) = tx.edits().len().checked_sub(1) else { return };
         let lines = self.line_count();
+        self.journal.record(&self.rope, tx, self.revision + 1);
         tx.apply(&mut self.rope);
         let end = tx.new_starts()[last] + tx.edits()[last].text.len();
         self.changed(self.line_of(tx.edits()[0].range.start), self.line_of(end) + 1, lines);

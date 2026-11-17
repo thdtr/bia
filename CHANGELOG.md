@@ -24,6 +24,9 @@ Notable changes to BIA are listed here. The format is based on
   from 28 ms of work to 7, the same as with a small tree, and the window uses about
   25 MB less.
 - Backups are written in the background instead of while you type.
+- Language servers get just the edited ranges when they support it (most do), instead
+  of the whole file after every pause, and messages to them are written on a thread of
+  their own, so a busy server can no longer freeze the window.
 - `Ctrl+P` lists the folder in the background and remembers the list, so it no longer
   freezes the window in big folders. Ranking 50,000 paths takes 3 ms instead of 18.
 

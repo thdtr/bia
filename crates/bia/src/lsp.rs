@@ -7,6 +7,7 @@
 //! app's subscription and are turned into [`Effect`]s for the app to apply.
 
 use crate::tabs::{Tab, Tabs};
+use bia_core::editor::{Place, Splice};
 use bia_core::fuzzy;
 use bia_core::lsp::types::{self, Completion, Diagnostic, Severity};
 use bia_core::lsp::{Client, Encoding, Event, Range, ServerId, text};
@@ -21,8 +22,41 @@ struct Server {
     ready: bool,
     encoding: Encoding,
     capabilities: Value,
-    /// Documents open on the server, with the version last sent.
-    open: HashMap<PathBuf, i32>,
+    /// Documents open on the server, and what it has of each.
+    open: HashMap<PathBuf, Doc>,
+}
+
+/// What a server has of an open document.
+struct Doc {
+    /// The version last sent.
+    version: i32,
+    /// The buffer and the revision of its text the server has.
+    buffer: u64,
+    revision: u64,
+}
+
+impl Server {
+    /// The server takes edits as ranges (`TextDocumentSyncKind.Incremental`),
+    /// not only whole texts.
+    fn incremental(&self) -> bool {
+        let sync = &self.capabilities["textDocumentSync"];
+        sync.as_u64().or_else(|| sync["change"].as_u64()) == Some(2)
+    }
+}
+
+/// `splice` as an LSP content change, its places counted in `encoding`.
+fn content_change(splice: &Splice, encoding: Encoding) -> Value {
+    let position = |p: &Place| {
+        let character = match encoding {
+            Encoding::Utf8 => p.byte,
+            Encoding::Utf16 => p.utf16,
+        };
+        json!({ "line": p.line, "character": character })
+    };
+    json!({
+        "range": { "start": position(&splice.start), "end": position(&splice.end) },
+        "text": splice.text,
+    })
 }
 
 enum Pending {
@@ -207,28 +241,43 @@ impl Lsp {
                     continue;
                 }
                 let uri = text::uri(&tab.path);
+                let (encoding, incremental) = (server.encoding, server.incremental());
                 match server.open.get_mut(&tab.path) {
                     None => {
-                        server.open.insert(tab.path.clone(), 1);
-                        server.client.notify(
-                            "textDocument/didOpen",
-                            json!({ "textDocument": {
-                                "uri": uri,
-                                "languageId": language_id(&server.language),
-                                "version": 1,
-                                "text": buffer.text(),
-                            }}),
-                        );
+                        let doc =
+                            Doc { version: 1, buffer: buffer.id, revision: buffer.revision() };
+                        server.open.insert(tab.path.clone(), doc);
+                        let mut params = json!({ "textDocument": {
+                            "uri": uri,
+                            "languageId": language_id(&server.language),
+                            "version": 1,
+                        }});
+                        // Moved in, not copied: it can be a big string.
+                        params["textDocument"]["text"] = Value::String(buffer.text());
+                        server.client.notify("textDocument/didOpen", params);
                     }
-                    Some(version) if self.stale.contains(&tab.path) => {
-                        *version += 1;
-                        server.client.notify(
-                            "textDocument/didChange",
-                            json!({
-                                "textDocument": { "uri": uri, "version": *version },
-                                "contentChanges": [{ "text": buffer.text() }],
-                            }),
-                        );
+                    Some(doc) if self.stale.contains(&tab.path) => {
+                        // Just the edits when the server can take them and
+                        // they're still known; the whole text otherwise.
+                        let splices = (incremental && doc.buffer == buffer.id)
+                            .then(|| buffer.editor.splices_since(doc.revision))
+                            .flatten();
+                        let changes = match splices {
+                            Some(s) if s.is_empty() => continue,
+                            Some(s) => s.iter().map(|s| content_change(s, encoding)).collect(),
+                            None => {
+                                let whole = [("text".to_owned(), Value::String(buffer.text()))];
+                                vec![Value::Object(whole.into_iter().collect())]
+                            }
+                        };
+                        doc.version += 1;
+                        doc.buffer = buffer.id;
+                        doc.revision = buffer.revision();
+                        let mut params = json!({
+                            "textDocument": { "uri": uri, "version": doc.version },
+                        });
+                        params["contentChanges"] = Value::Array(changes);
+                        server.client.notify("textDocument/didChange", params);
                     }
                     Some(_) => {}
                 }
