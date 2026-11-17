@@ -25,6 +25,7 @@
   "editor.read_error": "Não foi possível abrir este arquivo: {error}",
   "palette.files": "Abrir arquivo pelo nome (:linha para pular)",
   "palette.count": "{count} arquivos nesta pasta",
+  "palette.listing": "Listando arquivos…",
   "palette.truncated": "Só os primeiros {count} arquivos entram na busca",
   "palette.line": "Número da linha, ou linha:coluna",
   "palette.line_hint": "Na linha {line} de {total}",

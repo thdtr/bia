@@ -25,6 +25,7 @@
   "editor.read_error": "Could not open this file: {error}",
   "palette.files": "Open file by name (add :line to jump)",
   "palette.count": "{count} files in this folder",
+  "palette.listing": "Listing files…",
   "palette.truncated": "Only the first {count} files are searched",
   "palette.line": "Line number, or line:column",
   "palette.line_hint": "On line {line} of {total}",

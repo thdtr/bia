@@ -5,15 +5,21 @@ use crate::code_view::{Input, Pick};
 use crate::keys::Command;
 use crate::syntax::Highlights;
 use bia_core::document::{Document, LineEnding};
+use bia_core::editor::Changed;
 use bia_core::editor::{DisplayMap, Editor, Motion};
-use bia_core::git::{self, Mark};
+use bia_core::git::Mark;
 use bia_core::indent::Indent;
 use iced::widget::markdown;
 use std::cell::RefCell;
 use std::ops::Range;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 pub struct Buffer {
+    /// Tells this buffer apart from every other, reloads included, so
+    /// work done in the background finds where it belongs.
+    pub id: u64,
     pub editor: Editor,
     pub line_ending: LineEnding,
     /// The file mixed LF and CRLF when it was opened.
@@ -32,41 +38,105 @@ pub struct Buffer {
     /// A new value asks the view to center the cursor (go to line).
     pub center: u64,
     /// The text as of the last commit, for the gutter's change marks.
-    pub git: RefCell<GitMarks>,
+    pub git: GitMarks,
 }
 
-/// Lines changed since the last commit, worked out again when the text
-/// changes.
+/// Lines changed since the last commit. The diff runs when the text
+/// changes (in the background for big files); until it comes back, the
+/// marks move with the lines added or removed above them.
 #[derive(Default)]
 pub struct GitMarks {
-    base: Option<String>,
-    revision: Option<u64>,
+    base: Option<Arc<str>>,
     marks: Vec<Mark>,
+    /// The revision `marks` are placed for.
+    placed: Option<u64>,
+    /// The revision of the last diff, and of one still running.
+    diffed: Option<u64>,
+    running: Option<u64>,
 }
 
-/// Past this many lines, the gutter goes without git marks: the diff would
-/// slow down typing.
+/// Past this many lines, the gutter goes without git marks.
 const GIT_MARK_LINES: usize = 50_000;
 
 impl GitMarks {
     pub fn set_base(&mut self, base: Option<String>) {
-        if self.base != base {
-            self.base = base;
-            self.revision = None;
+        if self.base.as_deref() != base.as_deref() {
+            self.base = base.map(Arc::from);
+            self.diffed = None;
+            self.running = None;
         }
     }
 
-    pub fn marks(&mut self, editor: &Editor) -> &[Mark] {
-        if self.revision != Some(editor.revision()) {
-            self.revision = Some(editor.revision());
-            self.marks = match &self.base {
-                Some(base) if editor.line_count() <= GIT_MARK_LINES => {
-                    git::marks(base, &editor.text())
-                }
-                _ => Vec::new(),
-            };
-        }
+    /// Forgets the marks, keeping the committed text (the file was
+    /// reloaded, so revisions start over).
+    fn reset(&mut self) {
+        *self = Self { base: self.base.take(), ..Self::default() };
+    }
+
+    pub fn marks(&self) -> &[Mark] {
         &self.marks
+    }
+
+    /// The committed text, if `editor` needs a new diff against it and
+    /// none is running.
+    pub fn wanted(&self, editor: &Editor) -> Option<Arc<str>> {
+        let revision = Some(editor.revision());
+        let wanted = self.diffed != revision
+            && self.running != revision
+            && editor.line_count() <= GIT_MARK_LINES;
+        self.base.clone().filter(|_| wanted)
+    }
+
+    pub fn start(&mut self, revision: u64) {
+        self.running = Some(revision);
+    }
+
+    /// A diff came back. Kept only if the text is still what was diffed.
+    pub fn finish(&mut self, editor: &Editor, revision: u64, marks: Vec<Mark>) {
+        if self.running == Some(revision) {
+            self.running = None;
+        }
+        if revision == editor.revision() {
+            self.marks = marks;
+            self.placed = Some(revision);
+            self.diffed = Some(revision);
+        }
+    }
+
+    /// Moves the marks along with the lines edited since they were placed.
+    pub fn follow(&mut self, editor: &Editor) {
+        if self.base.is_none() || editor.line_count() > GIT_MARK_LINES {
+            self.marks.clear();
+            return;
+        }
+        let Some(placed) = self.placed else { return };
+        match editor.changed_lines(placed) {
+            Changed::Nothing => return,
+            Changed::Everything => self.marks.clear(),
+            Changed::Lines { first, old_end, new_end } => {
+                shift_marks(&mut self.marks, first, old_end, new_end);
+            }
+        }
+        self.placed = Some(editor.revision());
+    }
+}
+
+/// Moves marks below lines `first..old_end`, which became
+/// `first..new_end`. Marks on the edited lines stay where they were.
+fn shift_marks(marks: &mut [Mark], first: usize, old_end: usize, new_end: usize) {
+    let shift = |line: &mut usize| {
+        if *line >= old_end.max(first + 1) {
+            *line = (*line + new_end).saturating_sub(old_end).max(first);
+        }
+    };
+    for mark in marks {
+        match mark {
+            Mark::Added { start, end } | Mark::Modified { start, end } => {
+                shift(start);
+                shift(end);
+            }
+            Mark::Deleted { at } => shift(at),
+        }
     }
 }
 
@@ -100,8 +170,10 @@ impl Buffer {
     pub fn new(doc: Document, syntax: String, indent: Indent) -> Self {
         let mut editor = Editor::new(&doc.text, indent);
         editor.syntax = syntax;
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
         let display = RefCell::new(DisplayMap::for_editor(&editor, None));
         Self {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             display,
             editor,
             line_ending: doc.line_ending,
@@ -112,7 +184,7 @@ impl Buffer {
             markdown_revision: 0,
             highlights: RefCell::default(),
             center: 0,
-            git: RefCell::default(),
+            git: GitMarks::default(),
         }
     }
 
@@ -143,9 +215,10 @@ impl Buffer {
         let (syntax, indent) = (old.syntax.clone(), old.indent);
         let (auto_close, tab_width) = (old.auto_close, old.tab_width);
         let preview = self.markdown.is_some();
-        let git = self.git.take();
+        let mut git = std::mem::take(&mut self.git);
+        git.reset();
         *self = Self::new(doc, syntax, indent);
-        self.git = RefCell::new(git);
+        self.git = git;
         self.editor.auto_close = auto_close;
         self.editor.tab_width = tab_width;
         if preview {
@@ -156,7 +229,7 @@ impl Buffer {
     /// Does what the editor widget asks.
     pub fn input(&mut self, input: Input) -> Reply {
         let ed = &mut self.editor;
-        let reply = match input {
+        match input {
             Input::Click { at, extend } => {
                 ed.click(at, extend);
                 Reply::None
@@ -187,9 +260,7 @@ impl Buffer {
             Input::Hover(at) => Reply::Lsp(LspAction::Hover(at)),
             Input::Definition(at) => Reply::Lsp(LspAction::Definition(at)),
             Input::Completion(pick) => Reply::Lsp(LspAction::Pick(pick)),
-        };
-        self.refresh_markdown();
-        reply
+        }
     }
 
     fn command(&mut self, command: Command) -> Reply {
@@ -252,15 +323,11 @@ impl Buffer {
     }
 
     pub fn undo(&mut self) -> bool {
-        let done = self.editor.undo();
-        self.refresh_markdown();
-        done
+        self.editor.undo()
     }
 
     pub fn redo(&mut self) -> bool {
-        let done = self.editor.redo();
-        self.refresh_markdown();
-        done
+        self.editor.redo()
     }
 
     /// 1-based line and character column of the cursor, for the status bar.
@@ -296,13 +363,11 @@ impl Buffer {
     pub fn replace_range(&mut self, range: Range<usize>, with: &str) {
         self.editor.select(range.clone());
         self.editor.replace_ranges(vec![(range, with.to_owned())]);
-        self.refresh_markdown();
     }
 
     /// Replaces every range (sorted, not overlapping) as one undo step.
     pub fn replace_all(&mut self, edits: &[(Range<usize>, String)]) {
         self.editor.replace_ranges(edits.to_vec());
-        self.refresh_markdown();
     }
 
     /// Puts back edits recovered from a backup, as one undo step on top of
@@ -319,8 +384,13 @@ impl Buffer {
         self.markdown_revision = self.revision();
     }
 
-    fn refresh_markdown(&mut self) {
-        if self.markdown.is_some() && self.markdown_revision != self.revision() {
+    /// The preview is open and older than the text.
+    pub fn markdown_stale(&self) -> bool {
+        self.markdown.is_some() && self.markdown_revision != self.revision()
+    }
+
+    pub fn refresh_markdown(&mut self) {
+        if self.markdown_stale() {
             self.set_preview(true);
         }
     }
@@ -374,6 +444,48 @@ mod tests {
         assert_eq!(b.cursor_offset(), 3);
         b.go_to(9, 9);
         assert_eq!(b.line_col(), (2, 2));
+    }
+
+    #[test]
+    fn git_marks_move_with_the_lines() {
+        let mut marks = [
+            Mark::Modified { start: 1, end: 2 },
+            Mark::Added { start: 5, end: 7 },
+            Mark::Deleted { at: 9 },
+        ];
+        // Line 3 became three lines.
+        shift_marks(&mut marks, 3, 4, 6);
+        assert_eq!(
+            marks,
+            [
+                Mark::Modified { start: 1, end: 2 },
+                Mark::Added { start: 7, end: 9 },
+                Mark::Deleted { at: 11 },
+            ]
+        );
+        // Lines 7 and 8 removed.
+        shift_marks(&mut marks, 7, 9, 7);
+        assert_eq!(marks[1], Mark::Added { start: 7, end: 7 });
+        assert_eq!(marks[2], Mark::Deleted { at: 9 });
+    }
+
+    #[test]
+    fn git_marks_wait_for_their_revision() {
+        let mut b = buffer("a\nb\n");
+        b.git.set_base(Some("a\n".into()));
+        let base = b.git.wanted(&b.editor).expect("needs a diff");
+        let revision = b.revision();
+        b.git.start(revision);
+        assert!(b.git.wanted(&b.editor).is_none());
+        let marks = bia_core::git::marks(&base, &b.text());
+        b.git.finish(&b.editor, revision, marks);
+        assert_eq!(b.git.marks(), [Mark::Added { start: 1, end: 2 }]);
+
+        // A diff of an older text is dropped.
+        b.input(Input::Text("x".into()));
+        b.git.finish(&b.editor, revision, Vec::new());
+        assert!(!b.git.marks().is_empty());
+        assert!(b.git.wanted(&b.editor).is_some());
     }
 
     #[test]

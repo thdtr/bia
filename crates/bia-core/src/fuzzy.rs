@@ -6,37 +6,77 @@
 
 /// Indices of the best `limit` matches for `query` among `paths`, best
 /// first. Ties go to the shorter path.
+///
+/// Runs on every key in a list of up to 50,000 paths, so most paths are
+/// turned down by a quick in-order check, and the ones that pass reuse the
+/// same buffers instead of allocating.
 pub fn rank(query: &str, paths: &[String], limit: usize) -> Vec<usize> {
     let query: Vec<char> =
         query.chars().filter(|c| !c.is_whitespace()).map(|c| c.to_ascii_lowercase()).collect();
+    let mut buffers = Buffers::default();
     let mut scored: Vec<(i64, usize)> = paths
         .iter()
         .enumerate()
-        .filter_map(|(i, path)| score(&query, path).map(|s| (s, i)))
+        .filter(|(_, path)| contains_in_order(&query, path))
+        .filter_map(|(i, path)| buffers.score(&query, path).map(|s| (s, i)))
         .collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then(paths[a.1].len().cmp(&paths[b.1].len())));
+    let order = |a: &(i64, usize), b: &(i64, usize)| {
+        b.0.cmp(&a.0).then(paths[a.1].len().cmp(&paths[b.1].len())).then(a.1.cmp(&b.1))
+    };
+    if scored.len() > limit && limit > 0 {
+        scored.select_nth_unstable_by(limit - 1, order);
+        scored.truncate(limit);
+    }
+    scored.sort_by(order);
     scored.into_iter().take(limit).map(|(_, i)| i).collect()
 }
 
-/// The score of `path` for an already lowercased `query`, or `None` if it
-/// doesn't match.
-pub fn score(query: &[char], path: &str) -> Option<i64> {
-    if query.is_empty() {
-        return Some(0);
+/// Whether the (lowercased) query's characters appear in `path` in order.
+fn contains_in_order(query: &[char], path: &str) -> bool {
+    let mut rest = query.iter().peekable();
+    for c in path.chars() {
+        match rest.peek() {
+            None => return true,
+            Some(&&q) if c.to_ascii_lowercase() == q => {
+                rest.next();
+            }
+            Some(_) => {}
+        }
     }
-    let chars: Vec<char> = path.chars().collect();
-    let name_start = chars.iter().rposition(|&c| c == '/' || c == '\\').map_or(0, |i| i + 1);
-    // The whole query inside the file name beats a match spread over folders.
-    let in_name = match_from(query, &chars, name_start).map(|s| s + 100);
-    let anywhere = match_from(query, &chars, 0);
-    in_name.max(anywhere)
+    rest.peek().is_none()
 }
 
-/// Matches `query` against `chars[start..]`. Each character goes to its
-/// first occurrence, or to a later one that starts a word when the rest of
-/// the query still fits after it.
-fn match_from(query: &[char], chars: &[char], start: usize) -> Option<i64> {
-    let lower: Vec<char> = chars.iter().map(|c| c.to_ascii_lowercase()).collect();
+/// Space for one path's characters, kept from one path to the next.
+#[derive(Default)]
+struct Buffers {
+    chars: Vec<char>,
+    lower: Vec<char>,
+}
+
+impl Buffers {
+    /// The score of `path` for an already lowercased `query`, or `None` if
+    /// it doesn't match.
+    fn score(&mut self, query: &[char], path: &str) -> Option<i64> {
+        if query.is_empty() {
+            return Some(0);
+        }
+        self.chars.clear();
+        self.chars.extend(path.chars());
+        self.lower.clear();
+        self.lower.extend(self.chars.iter().map(char::to_ascii_lowercase));
+        let (chars, lower) = (&self.chars, &self.lower);
+        let name_start = chars.iter().rposition(|&c| c == '/' || c == '\\').map_or(0, |i| i + 1);
+        // The whole query inside the file name beats a match spread over folders.
+        let in_name = match_from(query, chars, lower, name_start).map(|s| s + 100);
+        let anywhere = match_from(query, chars, lower, 0);
+        in_name.max(anywhere)
+    }
+}
+
+/// Matches `query` against `chars[start..]` (`lower` is the same,
+/// lowercased). Each character goes to its first occurrence, or to a later
+/// one that starts a word when the rest of the query still fits after it.
+fn match_from(query: &[char], chars: &[char], lower: &[char], start: usize) -> Option<i64> {
     let fits = |rest: &[char], from: usize| {
         let mut it = lower.get(from..).unwrap_or_default().iter();
         rest.iter().all(|q| it.any(|c| c == q))

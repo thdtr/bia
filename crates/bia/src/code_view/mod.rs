@@ -8,7 +8,6 @@
 
 mod row;
 
-use crate::buffer::GitMarks;
 use crate::fonts;
 use crate::frame_cache::FrameCache;
 use crate::keys::{self, Command};
@@ -110,7 +109,7 @@ pub struct CodeView<'a, Message> {
     syntax: syntax::Context<'a>,
     matches: &'a [Range<usize>],
     current_match: Option<usize>,
-    git: Option<&'a RefCell<GitMarks>>,
+    git: &'a [Mark],
     underlines: Vec<(Range<usize>, Underline)>,
     hover: Option<(usize, &'a str)>,
     completion: Option<CompletionList<'a>>,
@@ -148,7 +147,7 @@ impl<'a, Message> CodeView<'a, Message> {
             syntax,
             matches: &[],
             current_match: None,
-            git: None,
+            git: &[],
             underlines: Vec::new(),
             hover: None,
             completion: None,
@@ -194,8 +193,8 @@ impl<'a, Message> CodeView<'a, Message> {
     }
 
     /// Lines changed since the last commit, shown in the gutter.
-    pub fn git(mut self, git: &'a RefCell<GitMarks>) -> Self {
-        self.git = Some(git);
+    pub fn git(mut self, marks: &'a [Mark]) -> Self {
+        self.git = marks;
         self
     }
 
@@ -1143,13 +1142,12 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
 
         // Line numbers.
         let gutter = Rectangle::new(bounds.position(), Size::new(m.gutter, bounds.height));
-        let marks: Vec<Mark> =
-            self.git.map(|g| g.borrow_mut().marks(self.editor).to_vec()).unwrap_or_default();
+        let marks = self.git;
         renderer.with_layer(gutter, |renderer| {
             // Changes since the last commit: a bar beside the line numbers,
             // or a wedge where lines were deleted.
             for (row, r, ..) in &rows {
-                for mark in &marks {
+                for mark in marks {
                     let (color, hit) = match *mark {
                         Mark::Added { start, end } => (c.added, (start..end).contains(&r.line)),
                         Mark::Modified { start, end } => {
@@ -1166,7 +1164,7 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                     }
                 }
             }
-            for mark in &marks {
+            for mark in marks {
                 if let Mark::Deleted { at } = *mark
                     && let Some((row, ..)) =
                         rows.iter().find(|(_, r, ..)| r.line == at && r.start == 0)

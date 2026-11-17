@@ -111,6 +111,14 @@ keyboard / mouse ──► iced ──► Message ──► Bia::update ──�
   editor logs it). Drawing parses for 12 ms at most per frame; until it catches up,
   lines on screen are parsed from their own start. A jump more than 5,000 lines past
   what was parsed starts parsing 200 lines above the screen instead.
+* **What follows the text.** Find matches, the Markdown preview and the git marks
+  are brought up to date after every message (`Bia::follow_edits`). Up to 256 KB
+  that happens at once; bigger files wait until typing pauses for 150 ms, and the
+  diff and the search run on a copy of the rope in the background (a rope clone
+  shares its contents, so the copy is free). Meanwhile the git marks move with the
+  lines added or removed above them. Backups are written by a thread of their own,
+  in order, and `Ctrl+P` lists the folder in the background and keeps the list
+  until a file operation or the window getting focus back.
 * **Saving.** `document::write_atomic` writes a temporary file next to the original,
   with the same permissions, flushes it to disk and renames it over the original. It
   follows symlinks. Files with more than one hard link, and files in folders where BIA

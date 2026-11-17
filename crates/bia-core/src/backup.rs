@@ -4,12 +4,17 @@
 //! path. BIA writes it a moment after you stop typing and deletes it once
 //! the file is saved or its edits are discarded. Opening a file that has a
 //! backup brings the edits back.
+//!
+//! The app goes through a [`Writer`], which does the writing on a thread of
+//! its own, in order.
 
 use crate::document;
+use ropey::Rope;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +71,69 @@ pub fn remove(dir: &Path, path: &Path) {
     }
 }
 
+type Done = Box<dyn FnOnce(bool) + Send>;
+
+enum Job {
+    Write { path: PathBuf, text: Rope, modified: Option<SystemTime>, done: Done },
+    Remove(PathBuf),
+    Flush(mpsc::Sender<()>),
+}
+
+/// Writes and removes backups on a thread of its own, one at a time and in
+/// the order asked. A removal asked after a write always comes after it, so
+/// saving while a backup is being written never leaves that backup behind.
+pub struct Writer {
+    jobs: mpsc::Sender<Job>,
+}
+
+impl Writer {
+    pub fn new(dir: PathBuf) -> Self {
+        let (jobs, queue) = mpsc::channel::<Job>();
+        std::thread::spawn(move || {
+            for job in queue {
+                match job {
+                    Job::Write { path, text, modified, done } => {
+                        let backup = Backup::new(path, text.to_string(), modified);
+                        done(write(&dir, &backup).is_ok());
+                    }
+                    Job::Remove(path) => remove(&dir, &path),
+                    Job::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        Self { jobs }
+    }
+
+    /// Backs up `text` (cheap to clone: a rope shares its contents) for
+    /// `path`. `done` hears whether it worked.
+    pub fn write(
+        &self,
+        path: PathBuf,
+        text: Rope,
+        modified: Option<SystemTime>,
+        done: impl FnOnce(bool) + Send + 'static,
+    ) {
+        let job = Job::Write { path, text, modified, done: Box::new(done) };
+        if let Err(mpsc::SendError(Job::Write { done, .. })) = self.jobs.send(job) {
+            done(false);
+        }
+    }
+
+    pub fn remove(&self, path: PathBuf) {
+        let _ = self.jobs.send(Job::Remove(path));
+    }
+
+    /// Waits until everything asked so far is done.
+    pub fn flush(&self) {
+        let (done, wait) = mpsc::channel();
+        if self.jobs.send(Job::Flush(done)).is_ok() {
+            let _ = wait.recv();
+        }
+    }
+}
+
 /// Every backup in `dir`.
 pub fn all(dir: &Path) -> Vec<Backup> {
     let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
@@ -98,6 +166,28 @@ mod tests {
         remove(&dir, &path);
         assert_eq!(read(&dir, &path), None);
         assert!(all(&dir).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn writer_keeps_the_order() {
+        let dir = std::env::temp_dir().join(format!("bia-writer-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = PathBuf::from("/home/x/a.rs");
+        let writer = Writer::new(dir.clone());
+        let (tx, rx) = mpsc::channel();
+        writer.write(path.clone(), Rope::from_str("edited"), None, move |ok| {
+            tx.send(ok).unwrap();
+        });
+        // Saved right away: the removal waits for the write.
+        writer.remove(path.clone());
+        writer.flush();
+        assert!(rx.recv().unwrap());
+        assert_eq!(read(&dir, &path), None);
+
+        writer.write(path.clone(), Rope::from_str("again"), None, |_| {});
+        writer.flush();
+        assert_eq!(read(&dir, &path).map(|b| b.text), Some("again".into()));
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -241,7 +241,7 @@ fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a
         .completion(app.lsp.completion.as_ref().filter(|c| c.path == tab.path).map(|c| {
             CompletionList { at: c.start, items: c.labels().collect(), selected: c.selected }
         }))
-        .git(&buffer.git)
+        .git(buffer.git.marks())
         .wrap(app.settings.soft_wrap)
         .scroll(hasher.finish(), tab.scroll, buffer.center)
         .into();

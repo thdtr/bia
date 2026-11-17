@@ -17,7 +17,7 @@ use crate::syntax;
 use crate::tabs::{Body, Tab, Tabs};
 use crate::terminal::{TermEvent, Terminal};
 use crate::ui::{self, style::Colors};
-use bia_core::backup::{self, Backup};
+use bia_core::backup;
 use bia_core::document::{self, Document, LoadError};
 use bia_core::fs_ops::{self, FsError};
 use bia_core::fuzzy;
@@ -97,6 +97,8 @@ pub enum Message {
     FolderPicked(Option<PathBuf>),
     OpenRecent(PathBuf),
     BackupTick,
+    /// A backup of a file at a revision was written, or failed to be.
+    BackupWritten(PathBuf, u64, bool),
     /// A file's text as of the last commit (`None`: not committed).
     GitBase(PathBuf, Option<String>),
     /// The branch and changed files of the folder that's open.
@@ -106,6 +108,15 @@ pub enum Message {
     Lsp(bia_core::lsp::Event),
     /// Time to send edited files to their language servers.
     LspSync,
+    /// Typing paused: time to bring find matches, the preview and the git
+    /// marks up to date (see [`Bia::follow_edits`]).
+    FollowEdits,
+    /// A git diff made in the background: buffer id, revision, marks.
+    GitMarks(u64, u64, Vec<git::Mark>),
+    /// Find matches counted in the background.
+    FindDone(Arc<FindResult>),
+    /// The open folder's files, listed in the background.
+    FilesListed(Arc<FileList>),
     TermChannel(iced::futures::channel::mpsc::UnboundedSender<TermEvent>),
     Term(TermEvent),
     TermResize(crate::terminal::Size),
@@ -202,12 +213,46 @@ pub struct Find {
     pub error: Option<String>,
     /// The replacement text, while the replace field is shown (Ctrl+H).
     pub replace: Option<String>,
+    /// The buffer and revision `matches` were counted in, and those of a
+    /// search still running.
+    searched: Option<(u64, u64)>,
+    running: Option<(u64, u64)>,
 }
 
 impl Find {
     fn matcher(&self) -> Result<Matcher, QueryError> {
         Matcher::new(&self.query, self.options)
     }
+
+    /// The query or its options changed: count again.
+    fn changed(&mut self) {
+        self.searched = None;
+        self.running = None;
+    }
+}
+
+/// What a find in the background found, and what it looked for.
+#[derive(Debug)]
+pub struct FindResult {
+    buffer: u64,
+    revision: u64,
+    query: String,
+    options: search::Options,
+    matches: Vec<Range<usize>>,
+}
+
+/// Up to this size, find matches, the Markdown preview and the git marks
+/// follow every keystroke. Bigger files get them once typing pauses, and
+/// the slow parts run off the UI thread.
+const LIVE_LIMIT: usize = 256 * 1024;
+const FOLLOW_DELAY: Duration = Duration::from_millis(150);
+
+/// When the active file was last edited, to wait for a pause in typing.
+struct Follow {
+    /// The buffer and revision seen after the last message.
+    seen: Option<(u64, u64)>,
+    edited_at: Instant,
+    scheduled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,12 +290,24 @@ pub struct Palette {
 }
 
 pub enum PaletteMode {
-    /// Open a file by name. Paths are relative to the workspace, with `/`.
-    Files { files: Vec<String>, truncated: bool, results: Vec<String> },
+    /// Open a file by name. `files` is `None` while they're being listed.
+    Files { files: Option<Arc<FileList>>, results: Vec<String> },
     /// Go to a line of the active file.
     Line,
     /// A new name for the symbol at `at` in `path` (language server).
     Rename { path: PathBuf, at: usize },
+}
+
+/// The files of the open folder, for "open file by name". Listed in the
+/// background and kept until something may have changed them: a file
+/// operation, or coming back from another app.
+#[derive(Debug)]
+pub struct FileList {
+    pub root: PathBuf,
+    /// Relative to `root`, with `/` separators, sorted.
+    pub files: Vec<String>,
+    /// The folder has more than [`MAX_FILES`].
+    pub truncated: bool,
 }
 
 pub struct Notice {
@@ -331,6 +388,11 @@ pub struct Bia {
     /// so its open files are remembered.
     remember_root: bool,
     backup_scheduled: bool,
+    backups: backup::Writer,
+    files: Option<Arc<FileList>>,
+    /// A listing of this folder is running.
+    listing: Option<PathBuf>,
+    follow: Follow,
     /// Numbers requests to center the cursor (see `Buffer::center`).
     center_seq: u64,
 }
@@ -346,6 +408,10 @@ impl Bia {
             recent: state.recent_folders(),
             remember_root: false,
             backup_scheduled: false,
+            backups: backup::Writer::new(paths::backups_dir()),
+            files: None,
+            listing: None,
+            follow: Follow { seen: None, edited_at: Instant::now(), scheduled: false },
             center_seq: 0,
             font_size_setting: settings.font_size,
             settings,
@@ -509,7 +575,7 @@ impl Bia {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.handle(message);
-        Task::batch([task, self.schedule_backup()])
+        Task::batch([task, self.schedule_backup(), self.follow_edits()])
     }
 
     fn handle(&mut self, message: Message) -> Task<Message> {
@@ -527,8 +593,8 @@ impl Bia {
             Message::FolderPicked(None) => {}
             Message::BackupTick => {
                 self.backup_scheduled = false;
-                self.write_backups();
                 self.save_session();
+                return self.write_backups();
             }
 
             Message::RowPressed(path) => {
@@ -586,7 +652,6 @@ impl Bia {
                 let edited = buffer.revision() != revision;
                 let syntax = buffer.editor.syntax.clone();
                 if edited {
-                    self.refresh_find();
                     self.lsp.edited(path.clone());
                     self.lsp.hover = None;
                 }
@@ -629,6 +694,38 @@ impl Bia {
                     return self.schedule_lsp_sync_in(LSP_DELAY - quiet);
                 }
                 self.sync_lsp();
+            }
+            Message::BackupWritten(path, revision, ok) => {
+                // Failed: the next tick tries again.
+                if let Some(tab) = self.tabs.iter_mut().find(|t| t.path == path)
+                    && !ok
+                    && tab.backup == Some(revision)
+                {
+                    tab.backup = None;
+                }
+            }
+            Message::FollowEdits => self.follow.scheduled = false,
+            Message::GitMarks(id, revision, marks) => {
+                if let Some(buffer) =
+                    self.tabs.iter_mut().find_map(|t| t.buffer_mut().filter(|b| b.id == id))
+                {
+                    buffer.git.finish(&buffer.editor, revision, marks);
+                }
+            }
+            Message::FindDone(found) => self.find_done(&found),
+            Message::FilesListed(list) => {
+                if self.listing.as_ref() == Some(&list.root) {
+                    self.listing = None;
+                }
+                if self.tree.as_ref().is_some_and(|t| t.root() == list.root) {
+                    self.files = Some(Arc::clone(&list));
+                    if let Some(Palette { mode: PaletteMode::Files { files, .. }, .. }) =
+                        &mut self.palette
+                    {
+                        *files = Some(list);
+                        self.refresh_palette();
+                    }
+                }
             }
             Message::TermChannel(sender) => self.term_events = Some(sender),
             Message::Term(event) => match event {
@@ -675,7 +772,7 @@ impl Bia {
                 if let Some(buffer) =
                     self.tabs.position(&path).and_then(|i| self.tabs.get_mut(i)?.buffer_mut())
                 {
-                    buffer.git.borrow_mut().set_base(base);
+                    buffer.git.set_base(base);
                 }
             }
             Message::GitStatus(root, status) => {
@@ -710,8 +807,9 @@ impl Bia {
                     current: None,
                     error: None,
                     replace,
+                    searched: None,
+                    running: None,
                 });
-                self.refresh_find();
             }
             Message::FindOption(option) => {
                 if let Some(find) = &mut self.find {
@@ -722,8 +820,8 @@ impl Bia {
                         FindOption::Regex => o.regex = !o.regex,
                     }
                     find.current = None;
+                    find.changed();
                 }
-                self.refresh_find();
                 return operation::focus(FIND_ID);
             }
             // Enter in the find field goes to the next match and stays there,
@@ -816,7 +914,6 @@ impl Bia {
                         b.redo()
                     };
                 }
-                self.refresh_find();
             }
             Shortcut::Find | Shortcut::Replace => {
                 if self.tabs.active().and_then(Tab::buffer).is_some() {
@@ -922,6 +1019,7 @@ impl Bia {
         self.remember_root = remember;
         self.palette = None;
         self.tree = Some(FileTree::new(root.clone(), self.settings.hidden.clone()));
+        self.files = None;
         self.selected = None;
         self.shelf = Shelf::Hidden;
         self.project_search = ProjectSearch::default();
@@ -1083,7 +1181,6 @@ impl Bia {
                         {
                             buffer.replace_range(range, &insert);
                             self.lsp.edited(path.to_owned());
-                            self.refresh_find();
                             return self.schedule_lsp_sync();
                         }
                     }
@@ -1214,7 +1311,6 @@ impl Bia {
                 }
             }
         }
-        self.refresh_find();
         tasks.push(self.schedule_lsp_sync());
         Task::batch(tasks)
     }
@@ -1314,23 +1410,32 @@ impl Bia {
 
     /// Brings `backups/` in line with the tabs: one backup per file with
     /// unsaved edits, none for the rest.
-    fn write_backups(&mut self) {
-        let dir = paths::backups_dir();
+    /// The writing happens on the backup thread; `tab.backup` says what
+    /// was asked of it, and goes back to `None` if writing fails.
+    fn write_backups(&mut self) -> Task<Message> {
+        let mut tasks = Vec::new();
         for tab in self.tabs.iter_mut() {
             let path = tab.path.clone();
             let Some(buffer) = tab.buffer() else { continue };
             if buffer.is_dirty() {
-                if tab.backup != Some(buffer.revision()) {
-                    let b = Backup::new(path, buffer.text(), buffer.modified);
-                    // On failure, the next edit tries again.
-                    if backup::write(&dir, &b).is_ok() {
-                        tab.backup = Some(buffer.revision());
-                    }
+                let revision = buffer.revision();
+                if tab.backup != Some(revision) {
+                    let (done, written) = iced::futures::channel::oneshot::channel();
+                    let text = buffer.editor.rope().clone();
+                    self.backups.write(path.clone(), text, buffer.modified, move |ok| {
+                        let _ = done.send(ok);
+                    });
+                    tab.backup = Some(revision);
+                    tasks.push(Task::perform(
+                        async move { written.await.unwrap_or(false) },
+                        move |ok| Message::BackupWritten(path.clone(), revision, ok),
+                    ));
                 }
             } else if tab.backup.take().is_some() {
-                backup::remove(&dir, &path);
+                self.backups.remove(path);
             }
         }
+        Task::batch(tasks)
     }
 
     /// Quitting: every tab is saved or its edits were discarded, so no
@@ -1339,12 +1444,12 @@ impl Bia {
         self.save_session();
         // Servers read EOF on their stdin and stop.
         self.lsp.restart();
-        let dir = paths::backups_dir();
         for tab in self.tabs.iter_mut() {
             if tab.backup.take().is_some() {
-                backup::remove(&dir, &tab.path);
+                self.backups.remove(tab.path.clone());
             }
         }
+        self.backups.flush();
         iced::exit()
     }
 
@@ -1396,7 +1501,7 @@ impl Bia {
         let dir = paths::backups_dir();
         let Some(b) = backup::read(&dir, path) else { return };
         if b.text == buffer.text() {
-            backup::remove(&dir, path);
+            self.backups.remove(path.to_owned());
             return;
         }
         buffer.recover(&b.text);
@@ -1443,7 +1548,7 @@ impl Bia {
         if let Some(tab) = self.tabs.remove(index)
             && tab.backup.is_some()
         {
-            backup::remove(&paths::backups_dir(), &tab.path);
+            self.backups.remove(tab.path);
         }
         if self.tabs.is_empty() {
             self.find = None;
@@ -1527,6 +1632,7 @@ impl Bia {
         self.after_save(&path);
         if let Some(tree) = &mut self.tree {
             tree.refresh();
+            self.files = None;
         }
         true
     }
@@ -1557,6 +1663,7 @@ impl Bia {
         self.look = look;
         if let Some(tree) = &mut self.tree {
             tree.set_hidden(settings.hidden.clone());
+            self.files = None;
         }
         // Grammars may have been added or removed, and `tab_size` may have
         // changed: detect every file again.
@@ -1593,6 +1700,7 @@ impl Bia {
     fn on_focus(&mut self) {
         if let Some(tree) = &mut self.tree {
             tree.refresh();
+            self.files = None;
         }
         let mut conflicts = Vec::new();
         for tab in self.tabs.iter_mut() {
@@ -1732,7 +1840,7 @@ impl Bia {
                     if tab.backup.take().is_some()
                         && let Ok(rest) = tab.path.strip_prefix(&to)
                     {
-                        backup::remove(&paths::backups_dir(), &from.join(rest));
+                        self.backups.remove(from.join(rest));
                     }
                     let (path, text) = match tab.buffer() {
                         Some(b) => (tab.path.clone(), b.text()),
@@ -1750,6 +1858,8 @@ impl Bia {
                 self.selected = None;
                 if let Some(tree) = &mut self.tree {
                     tree.refresh();
+                    self.files = None;
+                    self.files = None;
                 }
             }
             // Renaming to the same name changes nothing.
@@ -1762,17 +1872,22 @@ impl Bia {
         if let Some(tree) = &mut self.tree {
             tree.reveal(path);
             tree.refresh();
+            self.files = None;
         }
         self.selected = Some(path.to_path_buf());
     }
 
     // ── Find ─────────────────────────────────────────────────────────────
 
-    /// Recounts matches after the text or the query changed, so "2 of 5"
-    /// stays true.
+    /// Counts matches now, if the text or the query changed since they
+    /// were last counted, so "2 of 5" stays true.
     fn refresh_find(&mut self) {
         let Some(find) = &mut self.find else { return };
         let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else { return };
+        let key = (buffer.id, buffer.revision());
+        if find.searched == Some(key) {
+            return;
+        }
         let (matches, error) = match find.matcher() {
             Ok(m) => (m.find_all(&buffer.text()), None),
             Err(QueryError::Empty) => (Vec::new(), None),
@@ -1781,6 +1896,104 @@ impl Bia {
         find.matches = matches;
         find.error = error;
         find.current = find.current.filter(|&i| i < find.matches.len());
+        find.searched = Some(key);
+    }
+
+    /// Matches counted in the background, kept if they're still for what
+    /// the find bar and the text are now.
+    fn find_done(&mut self, found: &FindResult) {
+        let Some(find) = &mut self.find else { return };
+        if find.running == Some((found.buffer, found.revision)) {
+            find.running = None;
+        }
+        let current = self.tabs.active().and_then(Tab::buffer).map(|b| (b.id, b.revision()));
+        if current != Some((found.buffer, found.revision))
+            || find.query != found.query
+            || find.options != found.options
+        {
+            return;
+        }
+        find.matches.clone_from(&found.matches);
+        find.error = None;
+        find.current = find.current.filter(|&i| i < find.matches.len());
+        find.searched = current;
+    }
+
+    /// Brings what follows the active file's text up to date: find
+    /// matches, the Markdown preview and the git marks. Runs after every
+    /// message. Up to [`LIVE_LIMIT`], it all happens at once; bigger files
+    /// wait for typing to pause, and the diff and the search run in the
+    /// background.
+    fn follow_edits(&mut self) -> Task<Message> {
+        let Some(buffer) = self.tabs.active_mut().and_then(Tab::buffer_mut) else {
+            return Task::none();
+        };
+        let key = (buffer.id, buffer.revision());
+        // An edit (not a switch to another file) starts the wait over.
+        if self.follow.seen.is_some_and(|(id, revision)| id == key.0 && revision != key.1) {
+            self.follow.edited_at = Instant::now();
+        }
+        self.follow.seen = Some(key);
+        buffer.git.follow(&buffer.editor);
+
+        let find_stale =
+            self.find.as_ref().is_some_and(|f| f.searched != Some(key) && f.running != Some(key));
+        let base = buffer.git.wanted(&buffer.editor);
+        if !find_stale && base.is_none() && !buffer.markdown_stale() {
+            return Task::none();
+        }
+        let live = buffer.editor.len() <= LIVE_LIMIT;
+        if !live {
+            let quiet = self.follow.edited_at.elapsed();
+            if quiet < FOLLOW_DELAY {
+                if self.follow.scheduled {
+                    return Task::none();
+                }
+                self.follow.scheduled = true;
+                return Task::perform(sleep(FOLLOW_DELAY - quiet), |()| Message::FollowEdits);
+            }
+        }
+
+        buffer.refresh_markdown();
+        let mut tasks = Vec::new();
+        if let Some(base) = base {
+            let (id, revision) = key;
+            buffer.git.start(revision);
+            if live {
+                let marks = git::marks(&base, &buffer.text());
+                buffer.git.finish(&buffer.editor, revision, marks);
+            } else {
+                let rope = buffer.editor.rope().clone();
+                tasks.push(Task::perform(
+                    async move { git::marks(&base, &rope.to_string()) },
+                    move |marks| Message::GitMarks(id, revision, marks),
+                ));
+            }
+        }
+        if find_stale {
+            if live {
+                self.refresh_find();
+            } else if let Some(find) = &mut self.find {
+                match find.matcher() {
+                    Ok(matcher) => {
+                        find.running = Some(key);
+                        let rope = buffer.editor.rope().clone();
+                        let (query, options) = (find.query.clone(), find.options);
+                        tasks.push(Task::perform(
+                            async move {
+                                let matches = matcher.find_all(&rope.to_string());
+                                let (buffer, revision) = key;
+                                Arc::new(FindResult { buffer, revision, query, options, matches })
+                            },
+                            Message::FindDone,
+                        ));
+                    }
+                    // An empty or invalid query costs nothing to count.
+                    Err(_) => self.refresh_find(),
+                }
+            }
+        }
+        Task::batch(tasks)
     }
 
     /// Selects the next (or previous) match. `to_editor` moves the focus to
@@ -1825,7 +2038,6 @@ impl Bia {
             && let Some(new) = matcher.replacement_at(&buffer.text(), range.clone(), &with)
         {
             buffer.replace_range(range, &new);
-            self.refresh_find();
         }
         self.find_step(true, false)
     }
@@ -1840,7 +2052,6 @@ impl Bia {
             return Task::none();
         }
         buffer.replace_all(&edits);
-        self.refresh_find();
         if let Some(find) = &mut self.find {
             find.current = None;
         }
@@ -1931,11 +2142,23 @@ impl Bia {
     // ── Open file by name, go to line ────────────────────────────────────
 
     fn open_palette(&mut self, files: bool) -> Task<Message> {
+        let mut list = Task::none();
         let mode = if files {
             let Some(tree) = &self.tree else { return Task::none() };
-            let (files, truncated) =
-                tree::list_files(tree.root(), &self.settings.hidden, MAX_FILES);
-            PaletteMode::Files { files, truncated, results: Vec::new() }
+            let root = tree.root().to_path_buf();
+            let files = self.files.clone().filter(|f| f.root == root);
+            if files.is_none() && self.listing.as_ref() != Some(&root) {
+                self.listing = Some(root.clone());
+                let hidden = self.settings.hidden.clone();
+                list = Task::perform(
+                    async move {
+                        let (files, truncated) = tree::list_files(&root, &hidden, MAX_FILES);
+                        Arc::new(FileList { root, files, truncated })
+                    },
+                    Message::FilesListed,
+                );
+            }
+            PaletteMode::Files { files, results: Vec::new() }
         } else {
             if self.tabs.active().and_then(Tab::buffer).is_none() {
                 return Task::none();
@@ -1945,7 +2168,7 @@ impl Bia {
         self.palette = Some(Palette { mode, query: String::new(), selected: 0 });
         self.shelf = Shelf::Hidden;
         self.refresh_palette();
-        operation::focus(PALETTE_ID)
+        Task::batch([operation::focus(PALETTE_ID), list])
     }
 
     /// Ranks the files again after the query changed. With no query, the
@@ -1962,12 +2185,15 @@ impl Bia {
             .collect();
         let Some(palette) = &mut self.palette else { return };
         palette.selected = 0;
-        let PaletteMode::Files { files, results, .. } = &mut palette.mode else { return };
+        let PaletteMode::Files { files, results } = &mut palette.mode else { return };
         let (name, _) = text::split_location(&palette.query);
-        *results = if name.trim().is_empty() {
-            open.into_iter().take(PALETTE_ROWS).collect()
-        } else {
-            fuzzy::rank(name, files, PALETTE_ROWS).into_iter().map(|i| files[i].clone()).collect()
+        *results = match files {
+            _ if name.trim().is_empty() => open.into_iter().take(PALETTE_ROWS).collect(),
+            Some(list) => fuzzy::rank(name, &list.files, PALETTE_ROWS)
+                .into_iter()
+                .map(|i| list.files[i].clone())
+                .collect(),
+            None => Vec::new(),
         };
     }
 

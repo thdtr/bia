@@ -13,6 +13,13 @@ Notable changes to BIA are listed here. The format is based on
   110 MB less.
 - Highlighting parses lines without their line break, which is 15–25% faster in some
   languages.
+- In files over 256 KB, find matches, the Markdown preview and the git marks catch up
+  when you pause typing, and the git diff and the search run in the background. In a
+  45,000-line file, being in a git repository added about 19 ms of work to every
+  keystroke; now it adds about 2.
+- Backups are written in the background instead of while you type.
+- `Ctrl+P` lists the folder in the background and remembers the list, so it no longer
+  freezes the window in big folders. Ranking 50,000 paths takes 3 ms instead of 18.
 
 ### Fixed
 

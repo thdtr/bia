@@ -30,12 +30,14 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
         .style(style::input(c));
 
     let below: Element<'a, Message> = match &palette.mode {
-        PaletteMode::Files { files, truncated, results } => {
+        PaletteMode::Files { files, results } => {
             if results.is_empty() {
-                let note = if palette.query.trim().is_empty() {
-                    t.f("palette.count", &[("count", &files.len())])
-                } else {
-                    t.t("find.none").to_owned()
+                let note = match files {
+                    None => t.t("palette.listing").to_owned(),
+                    Some(list) if palette.query.trim().is_empty() => {
+                        t.f("palette.count", &[("count", &list.files.len())])
+                    }
+                    Some(_) => t.t("find.none").to_owned(),
                 };
                 note_row(app, note)
             } else {
@@ -56,9 +58,9 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
                         .into()
                 });
                 let mut list = Column::with_children(rows);
-                if *truncated {
-                    list = list
-                        .push(note_row(app, t.f("palette.truncated", &[("count", &files.len())])));
+                if let Some(files) = files.as_ref().filter(|f| f.truncated) {
+                    let note = t.f("palette.truncated", &[("count", &files.files.len())]);
+                    list = list.push(note_row(app, note));
                 }
                 list.into()
             }
