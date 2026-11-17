@@ -33,8 +33,9 @@ bia/
 │   ├── make_icons.py    generates the explorer icons
 │   ├── make_logo.py     generates the logo and every app icon format
 │   ├── make_social_preview.py   the image shown when a link to BIA is shared
-│   └── third_party_licenses.sh   licenses of everything the binary includes
-├── about.toml, about.hbs    cargo-about settings for the script above
+│   ├── third_party_licenses.sh   licenses of everything the binary includes
+│   └── measure.sh       memory and CPU per key, GPU and CPU renderers, old vs new
+├── about.toml, about.hbs    cargo-about settings for third_party_licenses.sh
 └── deny.toml            the dependency-level half of the "sealed" guarantee
 ```
 
