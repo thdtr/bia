@@ -655,6 +655,7 @@ impl Bia {
                 }
             }
             Message::Save => {
+                self.lsp.completion = None;
                 self.save(self.tabs.active_index(), false);
                 if let Some(path) = self.tabs.active().map(|t| t.path.clone()) {
                     self.sync_lsp();
@@ -986,24 +987,28 @@ impl Bia {
     /// Keeps the completion list in step with the cursor, and opens it
     /// while typing a word or after a trigger character (`.`).
     fn follow_completion(&mut self, path: &Path, typed: Option<char>) {
-        let start_list = typed.is_some_and(|c| {
-            self.lsp.completion.is_none()
-                && self.lsp.supports(path, "completionProvider")
-                && (c.is_alphanumeric()
-                    || c == '_'
-                    || self.lsp.triggers(path).iter().any(|t| t.ends_with(c)))
-        });
-        if start_list {
-            self.sync_lsp();
+        // A trigger character starts a new list, for what comes after it.
+        let trigger = typed.is_some_and(|c| self.lsp.triggers(path).iter().any(|t| t.ends_with(c)));
+        if trigger {
+            self.lsp.completion = None;
         }
+        if self.lsp.completion.is_some() {
+            let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else { return };
+            self.lsp.refilter(path, buffer.editor.rope(), buffer.cursor_offset());
+            return;
+        }
+        let start_list = typed.is_some_and(|c| {
+            self.lsp.supports(path, "completionProvider")
+                && (trigger || c.is_alphanumeric() || c == '_')
+        });
+        if !start_list {
+            return;
+        }
+        self.sync_lsp();
         let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else { return };
         let rope = buffer.editor.rope();
         let cursor = buffer.cursor_offset();
-        if self.lsp.completion.is_some() {
-            self.lsp.refilter(path, rope, cursor);
-        } else if start_list {
-            self.lsp.complete(path, rope, word_start(rope, cursor), cursor);
-        }
+        self.lsp.complete(path, rope, word_start(rope, cursor), cursor);
     }
 
     fn lsp_action(&mut self, path: &Path, action: LspAction) -> Task<Message> {

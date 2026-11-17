@@ -100,6 +100,9 @@ pub struct Lsp {
     pub sync_scheduled: bool,
     pub hover: Option<(PathBuf, usize, String)>,
     pub completion: Option<CompletionState>,
+    /// The newest completion request: replies to older ones, which can
+    /// come later, are dropped.
+    last_completion: Option<(ServerId, u64)>,
 }
 
 /// The `languageId` LSP expects, from a grammar name.
@@ -257,6 +260,9 @@ impl Lsp {
     fn request(&mut self, path: &Path, method: &str, params: Value, pending: Pending) -> bool {
         let Some((id, server)) = self.server_of(path) else { return false };
         let request = server.client.request(method, params);
+        if matches!(pending, Pending::Completion { .. }) {
+            self.last_completion = Some((id, request));
+        }
         self.pending.insert((id, request), pending);
         true
     }
@@ -368,7 +374,7 @@ impl Lsp {
         };
         c.selected = c.selected.min(c.shown.len().saturating_sub(1));
         // Nothing left, or only what's already typed in full.
-        let only_itself = c.shown.len() == 1 && c.items[c.shown[0]].insert == typed;
+        let only_itself = c.shown.iter().all(|&i| c.items[i].insert == typed);
         if c.shown.is_empty() || only_itself {
             self.completion = None;
         }
@@ -447,6 +453,9 @@ impl Lsp {
                         Vec::new()
                     }
                     Pending::Completion { path, start } => {
+                        if self.last_completion != Some((server, id)) {
+                            return Vec::new();
+                        }
                         let items = types::completions(&result);
                         let Some((active_path, rope, cursor)) = active else { return Vec::new() };
                         if active_path != path || items.is_empty() {
