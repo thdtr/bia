@@ -93,7 +93,7 @@ html:not(.js) .install__bar { display: none; }
 .features__item dt { font-size: var(--text-title); line-height: 1.3; }
 .features__item dd { margin-top: var(--space-xs); color: var(--color-ink-2); max-width: 40ch; }
 
-.left-out { margin-top: var(--section-gap); }
+.left-out { margin-top: var(--section-gap-l); }
 .left-out__list { display: flex; flex-wrap: wrap; gap: 0 0.55em; list-style: none; font-size: var(--text-statement); font-weight: 300; line-height: 1.22; letter-spacing: -0.02em; color: var(--color-muted); }
 .left-out__note { margin-top: var(--space-xl); font-size: var(--text-lead); max-width: 40ch; }
 

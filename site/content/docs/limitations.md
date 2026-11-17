@@ -1,6 +1,6 @@
 +++
 title = "Known limitations"
-description = "What BIA does not do yet, and what it will not do."
+description = "Current limitations of BIA, and features it does not have yet."
 weight = 8
 +++
 
@@ -11,8 +11,8 @@ weight = 8
 - **Mixed line endings are not preserved.** A file that mixes LF and CRLF is saved with the more common of the two. The status bar reports this before saving.
 - **Tabs are drawn eight columns wide.** The editor widget does not allow this to be changed. `tab_size` only sets what the <kbd>Tab</kbd> key inserts.
 
-## Out of scope
+## Not available yet
 
-BIA does not include, and does not plan to include, a terminal, git integration, a debugger, plugins, AI features, telemetry, automatic updates, accounts or sync. These features either need the network (see [No network code](@/docs/network.md)) or work better as separate tools.
+BIA does not currently include a terminal, git integration, a debugger, Language Server Protocol (LSP) support, plugins or AI features. Some of these may be added in the future. Because each one would add significantly to the code (LSP support alone would roughly double it), a proposal should start as an [issue](https://github.com/thdtr/bia/issues), so that it can be discussed before any code is written.
 
-Language Server Protocol (LSP) support is the one exception that may be reconsidered. It runs local programs and therefore does not conflict with the network policy, but it would roughly double the size of the code. It requires a discussion in an issue before any code is written.
+Features that require the network, such as telemetry, automatic updates, accounts or sync, will not be added. See [No network code](@/docs/network.md).

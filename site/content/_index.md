@@ -24,9 +24,9 @@ features = [
   { name = "English and Portuguese", text = "Follows your system, or your settings." },
 ]
 
-left_out_title = "And what it leaves out"
-left_out = ["Terminal", "Git", "Debugger", "LSP", "Plugins", "AI", "Telemetry", "Auto-update", "Accounts", "Sync"]
-left_out_note = "Some of these need the network. The rest are better as separate tools."
+left_out_title = "What it doesn’t do yet"
+left_out = ["Terminal", "Git", "Debugger", "LSP", "Plugins", "AI"]
+left_out_note = "Some may come later. Anything that needs the network won’t."
 
 saves_title = "Saving never breaks a file"
 saves_lede = "BIA writes a copy first and swaps it in once it’s safely on disk."

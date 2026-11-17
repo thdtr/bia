@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        BIA tries to stay small. Please check what's out of scope in
-        [docs/ARCHITECTURE.md](https://github.com/thdtr/bia/blob/main/docs/ARCHITECTURE.md#out-of-scope) first.
-        Features that need the network are out of scope ([docs/SEALED.md](https://github.com/thdtr/bia/blob/main/docs/SEALED.md)).
+        BIA tries to stay small, so new features start with a conversation here.
+        [docs/ARCHITECTURE.md](https://github.com/thdtr/bia/blob/main/docs/ARCHITECTURE.md#not-in-bia-yet) lists what isn't in BIA yet.
+        Features that need the network won't be added ([docs/SEALED.md](https://github.com/thdtr/bia/blob/main/docs/SEALED.md)).
   - type: textarea
     id: problem
     attributes:

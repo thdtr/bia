@@ -10,9 +10,10 @@ Issues and pull requests in Portuguese are fine as well.
 
 * For a bug, open an issue with the steps to reproduce it, your OS and the output of
   `bia --version`.
-* For a feature, open an issue first, and check
-  [what's out of scope](docs/ARCHITECTURE.md#out-of-scope). Anything that needs the
-  network won't be accepted ([docs/SEALED.md](docs/SEALED.md)).
+* For a feature, open an issue first. Some things
+  [aren't in BIA yet](docs/ARCHITECTURE.md#not-in-bia-yet) and need a conversation
+  before any code. Anything that needs the network won't be accepted
+  ([docs/SEALED.md](docs/SEALED.md)).
 * Themes, grammars and translations are a good way to start. See below.
 
 ## Development

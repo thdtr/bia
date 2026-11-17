@@ -1,6 +1,6 @@
 +++
 title = "Limitações conhecidas"
-description = "O que o BIA ainda não faz e o que ele não vai fazer."
+description = "Limitações atuais do BIA e recursos que ele ainda não tem."
 weight = 8
 +++
 
@@ -11,8 +11,8 @@ weight = 8
 - **Quebras de linha mistas não são preservadas.** Um arquivo que mistura LF e CRLF é salvo com a mais frequente das duas. A barra de status avisa isso antes do salvamento.
 - **Tabs ocupam oito colunas na tela.** O componente de edição não permite alterar isso. O `tab_size` define apenas o que a tecla <kbd>Tab</kbd> insere.
 
-## Fora do escopo
+## Ainda não disponível
 
-O BIA não tem, nem pretende ter, terminal, integração com git, depurador, plugins, recursos de IA, telemetria, atualização automática, contas ou sincronização. Esses recursos precisam de rede (veja [Sem código de rede](@/docs/network.pt-br.md)) ou funcionam melhor como ferramentas à parte.
+O BIA ainda não tem terminal, integração com git, depurador, suporte ao Language Server Protocol (LSP), plugins nem recursos de IA. Alguns deles podem ser adicionados no futuro. Como cada um aumentaria bastante o código (só o suporte a LSP dobraria seu tamanho, aproximadamente), uma proposta deve começar por uma [issue](https://github.com/thdtr/bia/issues), para ser discutida antes de qualquer código.
 
-O suporte ao Language Server Protocol (LSP) é a única exceção que pode ser reconsiderada. Ele executa programas locais e, por isso, não entra em conflito com a política de rede, mas dobraria o tamanho do código, aproximadamente. Antes de qualquer código, é preciso abrir uma issue para discutir o assunto.
+Recursos que dependem de rede, como telemetria, atualização automática, contas ou sincronização, não serão adicionados. Veja [Sem código de rede](@/docs/network.pt-br.md).

@@ -24,9 +24,9 @@ features = [
   { name = "Português e inglês", text = "Segue o sistema, ou o que você configurar." },
 ]
 
-left_out_title = "E o que ficou de fora"
-left_out = ["Terminal", "Git", "Depurador", "LSP", "Plugins", "IA", "Telemetria", "Atualização automática", "Contas", "Sincronização"]
-left_out_note = "Alguns precisam de internet. Os outros funcionam melhor como ferramentas à parte."
+left_out_title = "O que ele ainda não faz"
+left_out = ["Terminal", "Git", "Depurador", "LSP", "Plugins", "IA"]
+left_out_note = "Alguns podem chegar mais tarde. O que depender de internet, não."
 
 saves_title = "Salvar nunca estraga um arquivo"
 saves_lede = "O BIA grava uma cópia antes e só faz a troca quando ela já está no disco."

@@ -142,10 +142,11 @@ few things an editor can't really do without:
 * **Each keystroke compares the whole text.** That's a byte comparison of at most
   16 MB, which you won't notice, and it keeps the undo code simple.
 
-## Out of scope
+## Not in BIA yet
 
-Terminal, git, debugger, LSP, plugins, AI, telemetry, auto-update, accounts and sync.
-These either need the network (see [SEALED.md](SEALED.md)) or are better as separate
-tools. LSP is the one we may revisit: it runs local programs, so it doesn't conflict
-with having no network code, but it would roughly double the size of the code. It
-needs a discussion in an issue before anyone writes code for it.
+There's no terminal, git integration, debugger, LSP, plugins or AI in BIA today. Some
+of them may come. Each one adds a lot to a small codebase (LSP alone would roughly
+double it), so open an issue to talk it through before writing code.
+
+Telemetry, auto-update, accounts and sync are a different case. They need the network,
+and BIA has no network code ([SEALED.md](SEALED.md)).
