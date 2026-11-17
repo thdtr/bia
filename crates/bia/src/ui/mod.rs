@@ -178,21 +178,21 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
     let c = app.look.colors;
     let t = &app.look.i18n;
 
-    let left: Element<'_, Message> = match (&app.notice, app.tabs.active()) {
-        (Some(notice), _) => hint(app, notice.text.as_str())
+    // The problem under the cursor, if a language server found one.
+    let problem = app.tabs.active().and_then(|tab| {
+        let buffer = tab.buffer()?;
+        let cursor = buffer.cursor_offset();
+        app.lsp
+            .problems(&tab.path, buffer.editor.rope())
+            .into_iter()
+            .find(|(r, ..)| r.start <= cursor && cursor <= r.end)
+            .map(|(_, severity, message)| (severity, message.to_owned()))
+    });
+    let left: Element<'_, Message> = match (&app.notice, app.tabs.active(), problem) {
+        (Some(notice), ..) => hint(app, notice.text.as_str())
             .color(if notice.error { c.danger } else { c.text })
             .into(),
-        // The problem under the cursor, if a language server found one.
-        (None, Some(tab))
-            if let Some(buffer) = tab.buffer()
-                && let Some((_, severity, message)) = {
-                    let cursor = buffer.cursor_offset();
-                    app.lsp
-                        .problems(&tab.path, buffer.editor.rope())
-                        .into_iter()
-                        .find(|(r, ..)| r.start <= cursor && cursor <= r.end)
-                } =>
-        {
+        (None, Some(_), Some((severity, message))) => {
             let color = match severity {
                 bia_core::lsp::types::Severity::Error => c.danger,
                 bia_core::lsp::types::Severity::Warning => c.modified,
@@ -201,7 +201,7 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
             let first = message.lines().next().unwrap_or_default().to_owned();
             hint(app, first).color(color).wrapping(text::Wrapping::None).into()
         }
-        (None, Some(tab)) => {
+        (None, Some(tab), None) => {
             let shown = app
                 .tree
                 .as_ref()
@@ -209,7 +209,7 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
                 .unwrap_or(&tab.path);
             hint(app, shown.display().to_string()).into()
         }
-        (None, None) => space().into(),
+        (None, None, _) => space().into(),
     };
 
     let mut right = row![].spacing(18).align_y(Alignment::Center);
