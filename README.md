@@ -67,6 +67,8 @@ The install commands above don't trigger this warning.
 - Safe saves: atomic writes, line endings kept, deleted files go to the trash
 - Reopens the files you left open, and brings back unsaved edits after a crash
 - Git: changed lines beside the line numbers, changed files in the tree, the branch
+- Language servers you choose: errors as you type, completion, go to definition,
+  hover, format, rename
 
 ## No network code
 
@@ -94,6 +96,11 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `Ctrl+Shift+L` | Select every occurrence |
 | `Ctrl+Alt+↑` / `Ctrl+Alt+↓` | Add a cursor above / below |
 | `Alt+click` | Add or remove a cursor |
+| `F12` / `Ctrl+click` | Go to definition (language server) |
+| `Ctrl+Space` | Complete (language server) |
+| `Shift+Alt+F` | Format the file (language server) |
+| `F2` in the editor | Rename the symbol (language server) |
+| `F8` / `Shift+F8` | Next / previous problem |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+Shift+V` | Markdown preview |
 | `Ctrl+B` | Toggle sidebar |
@@ -130,6 +137,16 @@ and Fira Code, but any installed font works.
 `hidden` lists names the file tree skips.
 `auto_close` types the closing bracket or quote for you.
 `soft_wrap` wraps long lines at the edge of the window.
+
+To use a language server, name its program per language, as the status bar shows
+the language. BIA starts none on its own:
+
+```json
+"language_servers": {
+  "Rust": ["rust-analyzer"],
+  "Python": ["pyright-langserver", "--stdio"]
+}
+```
 `tab_size` is how wide a tab looks, and the indent width for files with no
 indentation yet. Files that have some keep their own.
 

@@ -163,6 +163,25 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
         (Some(notice), _) => hint(app, notice.text.as_str())
             .color(if notice.error { c.danger } else { c.text })
             .into(),
+        // The problem under the cursor, if a language server found one.
+        (None, Some(tab))
+            if let Some(buffer) = tab.buffer()
+                && let Some((_, severity, message)) = {
+                    let cursor = buffer.cursor_offset();
+                    app.lsp
+                        .problems(&tab.path, buffer.editor.rope())
+                        .into_iter()
+                        .find(|(r, ..)| r.start <= cursor && cursor <= r.end)
+                } =>
+        {
+            let color = match severity {
+                bia_core::lsp::types::Severity::Error => c.danger,
+                bia_core::lsp::types::Severity::Warning => c.modified,
+                _ => c.muted,
+            };
+            let first = message.lines().next().unwrap_or_default().to_owned();
+            hint(app, first).color(color).wrapping(text::Wrapping::None).into()
+        }
         (None, Some(tab)) => {
             let shown = app
                 .tree
@@ -175,6 +194,14 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
     };
 
     let mut right = row![].spacing(18).align_y(Alignment::Center);
+    if let Some(tab) = app.tabs.active() {
+        let (errors, warnings) = app.lsp.counts(&tab.path);
+        if errors + warnings > 0 {
+            let counts = t.f("status.problems", &[("errors", &errors), ("warnings", &warnings)]);
+            let color = if errors > 0 { c.danger } else { c.modified };
+            right = right.push(hint(app, counts).color(color));
+        }
+    }
     if let Some(branch) = &app.git.branch {
         let icon = explorer::icon(crate::icons::get("git"), c.muted);
         right = right

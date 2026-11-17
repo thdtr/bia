@@ -3,10 +3,11 @@
 use super::{hint, label, logo, option_toggle, style, tip};
 use crate::app::{Bia, EDITOR_ID, FIND_ID, FindOption, Message, REPLACE_ID};
 use crate::buffer::Buffer;
-use crate::code_view::CodeView;
+use crate::code_view::{CodeView, CompletionList, Underline};
 use crate::keys;
 use crate::tabs::{Body, Tab};
 use crate::ui::style::Colors;
+use bia_core::lsp::types::Severity;
 use iced::widget::{
     Row, button, center, column, container, markdown, mouse_area, rich_text, row, rule, scrollable,
     space, text_input, tooltip,
@@ -203,22 +204,47 @@ fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a
     };
     let mut hasher = std::hash::DefaultHasher::new();
     tab.path.hash(&mut hasher);
-    let code: Element<'a, Message> = CodeView::new(
-        EDITOR_ID,
-        &buffer.editor,
-        &buffer.highlights,
-        &buffer.display,
-        app.syntax_context(),
-        c,
-        Message::Input,
-        Message::EditorScrolled,
-    )
-    .font(app.look.editor_font, app.settings.font_size, app.settings.line_height)
-    .matches(matches, current)
-    .git(&buffer.git)
-    .wrap(app.settings.soft_wrap)
-    .scroll(hasher.finish(), tab.scroll, buffer.center)
-    .into();
+    let code: Element<'a, Message> =
+        CodeView::new(
+            EDITOR_ID,
+            &buffer.editor,
+            &buffer.highlights,
+            &buffer.display,
+            app.syntax_context(),
+            c,
+            Message::Input,
+            Message::EditorScrolled,
+        )
+        .font(app.look.editor_font, app.settings.font_size, app.settings.line_height)
+        .matches(matches, current)
+        .underlines(
+            app.lsp
+                .problems(&tab.path, buffer.editor.rope())
+                .into_iter()
+                .map(|(range, severity, _)| {
+                    let kind = match severity {
+                        Severity::Error => Underline::Error,
+                        Severity::Warning => Underline::Warning,
+                        Severity::Info | Severity::Hint => Underline::Note,
+                    };
+                    (range, kind)
+                })
+                .collect(),
+        )
+        .hover(
+            app.lsp
+                .hover
+                .as_ref()
+                .filter(|(path, ..)| *path == tab.path)
+                .map(|(_, at, text)| (*at, text.as_str())),
+        )
+        .completion(app.lsp.completion.as_ref().filter(|c| c.path == tab.path).map(|c| {
+            CompletionList { at: c.start, items: c.labels().collect(), selected: c.selected }
+        }))
+        .git(&buffer.git)
+        .wrap(app.settings.soft_wrap)
+        .scroll(hasher.finish(), tab.scroll, buffer.center)
+        .into();
 
     match (&buffer.markdown, app.is_markdown(tab)) {
         (Some(md), true) => {

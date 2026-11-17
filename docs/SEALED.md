@@ -69,6 +69,14 @@ Some things are outside that:
   daemon and every transport (`protocol.allow=never`). Programs are separate from
   BIA, so what they do is up to them, but none of these calls asks git to use the
   network.
+* **Language servers.** They're programs you install and name in
+  `language_servers`; BIA starts none on its own and downloads none. It talks to them
+  over their stdin and stdout. What a server does is up to it, and some reach the
+  network on their own: rust-analyzer runs cargo, gopls runs go. BIA starts them
+  with `CARGO_NET_OFFLINE=true`, `GOPROXY=off`, `GOTOOLCHAIN=local`,
+  `PIP_NO_INDEX=1` and `NPM_CONFIG_OFFLINE=true`, which turn off the downloads those
+  tools know about. For a hard guarantee on Linux, run BIA with `unshare -rn`, as
+  above: its servers inherit having no network.
 * **Builds from somewhere else.** This only holds for builds of this code. Build it
   yourself, or check that a release file came from this repository's CI:
 

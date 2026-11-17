@@ -68,7 +68,41 @@ pub enum Input {
     /// Typed text, or what an input method composed.
     Text(String),
     Paste(String),
+    /// The mouse rested over this offset (`None`: it moved away).
+    Hover(Option<usize>),
+    /// Ctrl+click: go to the definition of what's there.
+    Definition(usize),
+    /// A key for the completion list while it's open.
+    Completion(Pick),
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pick {
+    Up,
+    Down,
+    Accept,
+    Cancel,
+}
+
+/// A problem a language server found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Underline {
+    Error,
+    Warning,
+    Note,
+}
+
+/// The completion list, shown under the word that starts at `at`.
+pub struct CompletionList<'a> {
+    pub at: usize,
+    pub items: Vec<(&'a str, Option<&'a str>)>,
+    pub selected: usize,
+}
+
+/// How long the mouse rests before a hover card is asked for.
+const HOVER_DELAY: Duration = Duration::from_millis(500);
+const CARD_WIDTH: f32 = 460.0;
+const LIST_ROWS: usize = 10;
 
 pub struct CodeView<'a, Message> {
     id: widget::Id,
@@ -79,6 +113,9 @@ pub struct CodeView<'a, Message> {
     matches: &'a [Range<usize>],
     current_match: Option<usize>,
     git: Option<&'a RefCell<GitMarks>>,
+    underlines: Vec<(Range<usize>, Underline)>,
+    hover: Option<(usize, &'a str)>,
+    completion: Option<CompletionList<'a>>,
     font: Font,
     size: f32,
     line_height: f32,
@@ -114,6 +151,9 @@ impl<'a, Message> CodeView<'a, Message> {
             matches: &[],
             current_match: None,
             git: None,
+            underlines: Vec::new(),
+            hover: None,
+            completion: None,
             font: Font::MONOSPACE,
             size: 14.0,
             line_height: 1.5,
@@ -135,6 +175,23 @@ impl<'a, Message> CodeView<'a, Message> {
     /// Search matches to light up, and which one is current.
     pub fn matches(mut self, matches: &'a [Range<usize>], current: Option<usize>) -> Self {
         (self.matches, self.current_match) = (matches, current);
+        self
+    }
+
+    /// Problems to underline: byte ranges, sorted by start.
+    pub fn underlines(mut self, underlines: Vec<(Range<usize>, Underline)>) -> Self {
+        self.underlines = underlines;
+        self
+    }
+
+    /// A hover card for the text at an offset.
+    pub fn hover(mut self, hover: Option<(usize, &'a str)>) -> Self {
+        self.hover = hover;
+        self
+    }
+
+    pub fn completion(mut self, completion: Option<CompletionList<'a>>) -> Self {
+        self.completion = completion;
         self
     }
 
@@ -202,6 +259,8 @@ struct State {
     last_click: Option<mouse::Click>,
     modifiers: keyboard::Modifiers,
     preedit: Option<input_method::Preedit>,
+    /// Where the mouse came to rest, when, and whether a hover was asked.
+    rest: Option<(Point, Instant, bool)>,
     cache: RefCell<Cache>,
 }
 
@@ -566,6 +625,14 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                 if self.sync_scroll(state, &m) {
                     shell.publish((self.on_scroll)(state.offset));
                 }
+                if let Some((point, since, asked)) = state.rest
+                    && !asked
+                    && now.saturating_duration_since(since) >= HOVER_DELAY
+                {
+                    state.rest = Some((point, since, true));
+                    let at = self.hit(point, &m, state);
+                    shell.publish((self.on_input)(Input::Hover(Some(at))));
+                }
                 // Highlighting a far-away part of a long file goes on over
                 // several frames.
                 if self.highlights.borrow().pending() {
@@ -628,6 +695,11 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                         state.drag = None;
                         publish(shell, Input::ToggleCursor(at));
                     }
+                    mouse::click::Kind::Single if state.modifiers.command() => {
+                        state.drag = None;
+                        publish(shell, Input::Click { at, extend: false });
+                        publish(shell, Input::Definition(at));
+                    }
                     mouse::click::Kind::Single => {
                         let anchor = self.editor.selections().primary().anchor;
                         let origin = if extend { anchor..anchor } else { at..at };
@@ -655,6 +727,26 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                 } else if let Some((origin, unit)) = state.drag.clone() {
                     let at = self.hit(point, &m, state);
                     publish(shell, Input::Drag { origin, at, unit });
+                } else {
+                    // Resting over text asks for a hover card; moving on
+                    // puts it away.
+                    let over_text = cursor.is_over(bounds) && point.x > m.text_x;
+                    let moved = state.rest.is_none_or(|(p, ..)| p.distance(point) > 4.0);
+                    if moved {
+                        if self.hover.is_some() {
+                            shell.publish((self.on_input)(Input::Hover(None)));
+                        }
+                        state.rest = over_text.then(|| (point, Instant::now(), false));
+                        if over_text {
+                            shell.request_redraw_at(Instant::now() + HOVER_DELAY);
+                        }
+                    }
+                }
+            }
+            Event::Mouse(mouse::Event::CursorLeft) => {
+                state.rest = None;
+                if self.hover.is_some() {
+                    shell.publish((self.on_input)(Input::Hover(None)));
                 }
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
@@ -690,6 +782,21 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
             }) => {
                 let Some(focus) = &mut state.focus else { return };
                 focus.since = Instant::now();
+                if self.completion.is_some() {
+                    let pick = match key {
+                        keyboard::Key::Named(keyboard::key::Named::ArrowUp) => Some(Pick::Up),
+                        keyboard::Key::Named(keyboard::key::Named::ArrowDown) => Some(Pick::Down),
+                        keyboard::Key::Named(
+                            keyboard::key::Named::Enter | keyboard::key::Named::Tab,
+                        ) if !modifiers.shift() => Some(Pick::Accept),
+                        keyboard::Key::Named(keyboard::key::Named::Escape) => Some(Pick::Cancel),
+                        _ => None,
+                    };
+                    if let Some(pick) = pick {
+                        publish(shell, Input::Completion(pick));
+                        return;
+                    }
+                }
                 if let Some(command) = keys::editor_command(key, *physical_key, *modifiers) {
                     match command {
                         // Escape with one cursor belongs to the app (closing find…).
@@ -827,6 +934,51 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
             .filter(|(_, r, ..)| r.start == 0)
             .map(|(row, r, ..)| (*row, r.line, self.number(&mut cache, r.line + 1)))
             .collect();
+        // Cards over the text: the hover card and the completion list.
+        let caret_at = |at: usize| {
+            let (row, x) = self.caret(at, &m);
+            Point::new(
+                bounds.x + m.text_x + x - offset.x,
+                bounds.y + PAD_TOP + row as f32 * m.line - offset.y,
+            )
+        };
+        let place = |anchor: Point, size: Size| {
+            let mut y = anchor.y + m.line + 4.0;
+            if y + size.height > bounds.y + bounds.height && anchor.y - size.height - 4.0 > bounds.y
+            {
+                y = anchor.y - size.height - 4.0;
+            }
+            let x = anchor
+                .x
+                .min(bounds.x + bounds.width - size.width - SCROLLBAR)
+                .max(bounds.x + m.gutter);
+            Rectangle::new(Point::new(x, y), size)
+        };
+        let card = self.hover.map(|(at, text)| {
+            let p = self.text_paragraph(&mut cache, text, Some(CARD_WIDTH - 20.0));
+            let size = Size::new(p.min_width() + 20.0, p.min_height() + 14.0);
+            (place(caret_at(at), size), p)
+        });
+        let list = self.completion.as_ref().map(|list| {
+            let first = (list.selected + 1).saturating_sub(LIST_ROWS);
+            let rows: Vec<(Paragraph, Option<Paragraph>)> = list
+                .items
+                .iter()
+                .skip(first)
+                .take(LIST_ROWS)
+                .map(|(label, detail)| {
+                    let detail = detail.map(|d| self.text_paragraph(&mut cache, d, None));
+                    (self.text_paragraph(&mut cache, label, None), detail)
+                })
+                .collect();
+            let widest = rows
+                .iter()
+                .map(|(l, d)| l.min_width() + d.as_ref().map_or(0.0, |d| d.min_width() + 24.0))
+                .fold(0.0, f32::max);
+            let size =
+                Size::new((widest + 20.0).clamp(220.0, 560.0), rows.len() as f32 * m.line + 8.0);
+            (place(caret_at(list.at), size), rows, list.selected - first)
+        });
         drop(cache);
 
         let x_of = |row_text: &RowText, paragraph: &Paragraph, at_in_line: usize| {
@@ -953,6 +1105,44 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
             });
         }
 
+        // Problems, underlined with a wave.
+        renderer.with_layer(text_area, |renderer| {
+            for (row, r, row_text, paragraph) in &rows {
+                let line_start = self.editor.line_start(r.line);
+                let (row_start, row_end) = (line_start + r.start, line_start + r.end);
+                let from = self.underlines.partition_point(|(range, _)| range.end < row_start);
+                for (range, kind) in &self.underlines[from..] {
+                    if range.start > row_end {
+                        break;
+                    }
+                    let range =
+                        if range.is_empty() { range.start..range.start + 1 } else { range.clone() };
+                    let Some(rect) = span_rect(*row, r, row_text, paragraph, range, line_start)
+                    else {
+                        continue;
+                    };
+                    let color = match kind {
+                        Underline::Error => c.danger,
+                        Underline::Warning => c.modified,
+                        Underline::Note => c.muted,
+                    };
+                    let y = rect.y + m.line - 3.0;
+                    let mut x = rect.x;
+                    let mut up = false;
+                    while x < rect.x + rect.width {
+                        let dy = if up { 0.0 } else { 1.5 };
+                        fill(
+                            renderer,
+                            Rectangle::new(Point::new(x, y + dy), Size::new(2.0, 1.5)),
+                            color,
+                        );
+                        x += 2.0;
+                        up = !up;
+                    }
+                }
+            }
+        });
+
         // Line numbers.
         let gutter = Rectangle::new(bounds.position(), Size::new(m.gutter, bounds.height));
         let marks: Vec<Mark> =
@@ -1014,6 +1204,49 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                     },
                     Background::Color(with_alpha(c.muted, 0.35)),
                 );
+            }
+        });
+
+        renderer.with_layer(bounds, |renderer| {
+            let frame = |renderer: &mut Renderer, rect: Rectangle| {
+                renderer.fill_quad(
+                    Quad {
+                        bounds: rect,
+                        border: Border { color: c.border, width: 1.0, radius: 6.0.into() },
+                        shadow: Shadow::default(),
+                        snap: true,
+                    },
+                    Background::Color(c.panel),
+                );
+            };
+            if let Some((rect, paragraph)) = &card {
+                frame(renderer, *rect);
+                let at = Point::new(rect.x + 10.0, rect.y + 7.0);
+                renderer.fill_paragraph(paragraph, at, c.text, *rect);
+            }
+            if let Some((rect, rows, selected)) = &list {
+                frame(renderer, *rect);
+                for (i, (label, detail)) in rows.iter().enumerate() {
+                    let y = rect.y + 4.0 + i as f32 * m.line;
+                    if i == *selected {
+                        let row = Rectangle::new(
+                            Point::new(rect.x + 2.0, y),
+                            Size::new(rect.width - 4.0, m.line),
+                        );
+                        fill(renderer, row, c.selection);
+                    }
+                    let dy = (m.line - label.min_height()) / 2.0;
+                    renderer.fill_paragraph(
+                        label,
+                        Point::new(rect.x + 10.0, y + dy),
+                        c.text,
+                        *rect,
+                    );
+                    if let Some(detail) = detail {
+                        let x = rect.x + rect.width - 10.0 - detail.min_width();
+                        renderer.fill_paragraph(detail, Point::new(x, y + dy), c.muted, *rect);
+                    }
+                }
             }
         });
     }
@@ -1087,6 +1320,31 @@ impl<Message> CodeView<'_, Message> {
             spans.push(Span::new(&text[at..]));
         }
         let paragraph = self.paragraph(text, &spans);
+        cache.paragraphs.insert(key, paragraph.clone());
+        paragraph
+    }
+
+    /// Interface text in the editor font, a little smaller, wrapped at
+    /// `width` if given. Cached like the rows.
+    fn text_paragraph(&self, cache: &mut Cache, content: &str, width: Option<f32>) -> Paragraph {
+        let size = (self.size * 0.92).round();
+        let mut hasher = std::hash::DefaultHasher::new();
+        ("text", content, width.map(f32::to_bits), self.font, size.to_bits()).hash(&mut hasher);
+        let key = hasher.finish();
+        if let Some(p) = cache.paragraphs.get(&key) {
+            return p.clone();
+        }
+        let paragraph = Paragraph::with_text(text::Text {
+            content,
+            bounds: Size::new(width.unwrap_or(f32::INFINITY), f32::INFINITY),
+            size: Pixels(size),
+            line_height: LineHeight::Relative(1.4),
+            font: self.font,
+            align_x: text::Alignment::Default,
+            align_y: Vertical::Top,
+            shaping: Shaping::Advanced,
+            wrapping: if width.is_some() { Wrapping::WordOrGlyph } else { Wrapping::None },
+        });
         cache.paragraphs.insert(key, paragraph.clone());
         paragraph
     }

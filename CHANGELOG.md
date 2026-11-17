@@ -32,6 +32,13 @@ Notable changes to BIA are listed here. The format is based on
 - `Ctrl+C` and `Ctrl+X` with nothing selected take the whole line, and pasting it
   puts it above the cursor's line.
 - `Ctrl+Backspace` and `Ctrl+Delete` delete a word.
+- Language servers, named per language in `"language_servers"` (BIA starts none
+  on its own): errors and warnings underlined as you type, with counts in the
+  status bar and the message under the cursor; a hover card when the mouse rests;
+  completion as you type or with `Ctrl+Space`; go to definition with `F12` or
+  `Ctrl+click`; format with `Shift+Alt+F`; rename with `F2`; `F8` to jump between
+  problems. Servers start with the download switches of cargo, go, pip and npm
+  turned off.
 - Git: bars beside the line numbers show lines added or changed since the last
   commit, and a mark shows where lines were deleted. Changed and new files are
   colored in the tree, and the status bar shows the branch. BIA runs your `git` for

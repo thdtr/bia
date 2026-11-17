@@ -19,6 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 bia-core.workspace = true
+serde_json.workspace = true
 iced = { version = "0.14", features = ["markdown", "advanced", "svg"] }
 # The same Markdown parser iced uses: finds indented code blocks for the
 # preview (see src/markdown.rs). No new crate in the build.

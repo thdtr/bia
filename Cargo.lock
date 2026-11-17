@@ -274,6 +274,7 @@ dependencies = [
  "pulldown-cmark",
  "rfd",
  "ropey",
+ "serde_json",
  "trash",
  "unicode-segmentation",
  "winresource",

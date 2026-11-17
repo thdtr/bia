@@ -69,6 +69,8 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Salvamento seguro: gravação atômica, quebras de linha mantidas, arquivo apagado vai para a lixeira
 - Reabre os arquivos que estavam abertos e recupera o que não foi salvo depois de um travamento
 - Git: linhas alteradas ao lado dos números, arquivos alterados na árvore, a branch
+- Servidores de linguagem que você escolhe: erros enquanto digita, completar, ir para
+  a definição, hover, formatar, renomear
 
 ## Sem código de rede
 
@@ -96,6 +98,11 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `Ctrl+Shift+L` | Selecionar todas as ocorrências |
 | `Ctrl+Alt+↑` / `Ctrl+Alt+↓` | Cursor a mais acima / abaixo |
 | `Alt+clique` | Pôr ou tirar um cursor |
+| `F12` / `Ctrl+clique` | Ir para a definição (servidor de linguagem) |
+| `Ctrl+Space` | Completar (servidor de linguagem) |
+| `Shift+Alt+F` | Formatar o arquivo (servidor de linguagem) |
+| `F2` no editor | Renomear o símbolo (servidor de linguagem) |
+| `F8` / `Shift+F8` | Próximo / anterior problema |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Desfazer / refazer |
 | `Ctrl+Shift+V` | Prévia de Markdown |
 | `Ctrl+B` | Mostrar ou esconder a barra lateral |
@@ -131,6 +138,16 @@ fontes Fira Sans e Fira Code, mas aceita qualquer fonte instalada. `theme` pode 
 `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou `pt-BR`. `hidden` lista os nomes que a árvore não mostra.
 `auto_close` fecha parênteses, colchetes, chaves e aspas por você.
 `soft_wrap` quebra as linhas longas na borda da janela.
+
+Para usar um servidor de linguagem, informe o programa de cada linguagem, com o nome
+que aparece na barra de status. O BIA não inicia nenhum sozinho:
+
+```json
+"language_servers": {
+  "Rust": ["rust-analyzer"],
+  "Python": ["pyright-langserver", "--stdio"]
+}
+```
 `tab_size` é a largura de um tab na tela e a da indentação em arquivos que ainda não
 têm nenhuma. Os que já têm mantêm a deles.
 

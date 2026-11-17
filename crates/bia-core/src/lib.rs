@@ -22,6 +22,7 @@ pub mod git;
 pub mod i18n;
 pub mod indent;
 pub mod language;
+pub mod lsp;
 pub mod paths;
 pub mod search;
 pub mod settings;

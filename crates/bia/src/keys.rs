@@ -34,6 +34,11 @@
 //! | Ctrl+Shift+K          | Delete lines               |
 //! | Ctrl+L                | Select line (again: more)  |
 //! | Alt+click             | Add or remove a cursor     |
+//! | F12, Ctrl+click       | Go to definition (LSP)     |
+//! | Ctrl+Space            | Complete (LSP)             |
+//! | Shift+Alt+F           | Format the file (LSP)      |
+//! | F2                    | Rename the symbol (LSP)    |
+//! | F8 / Shift+F8         | Next / previous problem    |
 //!
 //! On macOS, `Cmd` replaces `Ctrl` and `Option` is `Alt`.
 
@@ -171,6 +176,14 @@ pub enum Command {
     },
     /// Escape with several cursors: back to one.
     Collapse,
+    // Language server commands.
+    GoToDefinition,
+    Complete,
+    Format,
+    RenameSymbol,
+    NextProblem {
+        back: bool,
+    },
 }
 
 /// The editor's keys. Anything else (Ctrl+S, Ctrl+F…) isn't the editor's
@@ -234,8 +247,15 @@ pub fn editor_command(key: &Key, physical: Physical, mods: Modifiers) -> Option<
                 }
             }
             Named::Escape => Collapse,
+            Named::F12 => GoToDefinition,
+            Named::F2 => RenameSymbol,
+            Named::F8 => NextProblem { back: shift },
+            Named::Space if cmd && !shift => Complete,
             _ => return None,
         });
+    }
+    if is_format(key, physical, mods) {
+        return Some(Format);
     }
     if !cmd || alt {
         return None;
@@ -253,6 +273,14 @@ pub fn editor_command(key: &Key, physical: Physical, mods: Modifiers) -> Option<
         'd' if !shift => SelectNext,
         _ => return None,
     })
+}
+
+/// Shift+Alt+F (Shift+Option+F on macOS): format the file.
+fn is_format(key: &Key, physical: Physical, mods: Modifiers) -> bool {
+    mods.shift()
+        && mods.alt()
+        && !mods.command()
+        && key.to_latin(physical).is_some_and(|c| c.eq_ignore_ascii_case(&'f'))
 }
 
 #[cfg(test)]

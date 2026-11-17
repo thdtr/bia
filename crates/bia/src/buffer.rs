@@ -1,7 +1,7 @@
 //! An open text file: its [`Editor`] (text, cursors, undo), what saving it
 //! faithfully needs, and the caches that drawing it uses.
 
-use crate::code_view::Input;
+use crate::code_view::{Input, Pick};
 use crate::keys::Command;
 use crate::syntax::Highlights;
 use bia_core::document::{Document, LineEnding};
@@ -78,6 +78,22 @@ pub enum Reply {
     Clipboard(String),
     /// Ctrl+/ in a language BIA has no comment tokens for.
     NoComments,
+    /// Something for the language server.
+    Lsp(LspAction),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspAction {
+    Definition(usize),
+    /// The mouse rests over an offset (`None`: it moved away).
+    Hover(Option<usize>),
+    Complete,
+    Pick(Pick),
+    Format,
+    Rename(usize),
+    NextProblem {
+        back: bool,
+    },
 }
 
 impl Buffer {
@@ -168,6 +184,9 @@ impl Buffer {
                 Reply::None
             }
             Input::Command(command) => self.command(command),
+            Input::Hover(at) => Reply::Lsp(LspAction::Hover(at)),
+            Input::Definition(at) => Reply::Lsp(LspAction::Definition(at)),
+            Input::Completion(pick) => Reply::Lsp(LspAction::Pick(pick)),
         };
         self.refresh_markdown();
         reply
@@ -219,6 +238,15 @@ impl Buffer {
             Command::Collapse => {
                 ed.collapse();
             }
+            Command::GoToDefinition => {
+                return Reply::Lsp(LspAction::Definition(ed.selections().primary().head));
+            }
+            Command::Complete => return Reply::Lsp(LspAction::Complete),
+            Command::Format => return Reply::Lsp(LspAction::Format),
+            Command::RenameSymbol => {
+                return Reply::Lsp(LspAction::Rename(ed.selections().primary().head));
+            }
+            Command::NextProblem { back } => return Reply::Lsp(LspAction::NextProblem { back }),
         }
         Reply::None
     }

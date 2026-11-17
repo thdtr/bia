@@ -5,6 +5,7 @@
 //! from inside BIA; there is no settings screen.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -37,6 +38,10 @@ pub struct Settings {
     pub auto_close: bool,
     /// Long lines wrap at the window's edge instead of scrolling sideways.
     pub soft_wrap: bool,
+    /// Language servers, by language name as the status bar shows it:
+    /// `{ "Rust": ["rust-analyzer"] }`. None by default: BIA never starts a
+    /// program you didn't name here.
+    pub language_servers: BTreeMap<String, Vec<String>>,
 }
 
 impl Default for Settings {
@@ -55,6 +60,7 @@ impl Default for Settings {
                 .to_vec(),
             auto_close: true,
             soft_wrap: false,
+            language_servers: BTreeMap::new(),
         }
     }
 }

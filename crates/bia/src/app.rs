@@ -8,10 +8,11 @@
 //! open files in `tabs.rs`, one file's text in `buffer.rs`, file operations
 //! in `bia_core::fs_ops`, the editor widget in `code_view`.
 
-use crate::buffer::{Buffer, Reply};
-use crate::code_view::Input;
+use crate::buffer::{Buffer, LspAction, Reply};
+use crate::code_view::{Input, Pick};
 use crate::fonts;
 use crate::keys::{self, Shortcut};
+use crate::lsp::{Effect, Lsp};
 use crate::syntax;
 use crate::tabs::{Body, Tab, Tabs};
 use crate::ui::{self, style::Colors};
@@ -95,6 +96,11 @@ pub enum Message {
     GitBase(PathBuf, Option<String>),
     /// The branch and changed files of the folder that's open.
     GitStatus(PathBuf, Arc<git::Status>),
+    /// Where language server threads send their events.
+    LspChannel(iced::futures::channel::mpsc::UnboundedSender<bia_core::lsp::Event>),
+    Lsp(bia_core::lsp::Event),
+    /// Time to send edited files to their language servers.
+    LspSync,
     RowPressed(PathBuf),
     RowContext(PathBuf),
     ToggleShelf,
@@ -234,6 +240,8 @@ pub enum PaletteMode {
     Files { files: Vec<String>, truncated: bool, results: Vec<String> },
     /// Go to a line of the active file.
     Line,
+    /// A new name for the symbol at `at` in `path` (language server).
+    Rename { path: PathBuf, at: usize },
 }
 
 pub struct Notice {
@@ -299,6 +307,7 @@ pub struct Bia {
     pub project_search: ProjectSearch,
     /// What git says about the open folder; empty outside a repository.
     pub git: Arc<git::Status>,
+    pub lsp: Lsp,
     pub dialog: Option<Dialog>,
     /// `font_size` as settings.json has it, while zoom changes the live one.
     font_size_setting: f32,
@@ -338,6 +347,7 @@ impl Bia {
             panel: Panel::Files,
             project_search: ProjectSearch::default(),
             git: Arc::default(),
+            lsp: Lsp::default(),
             dialog: None,
         };
         if let Some(e) = settings_error {
@@ -408,7 +418,7 @@ impl Bia {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        event::listen_with(|event, status, _window| match event {
+        let keys = event::listen_with(|event, status, _window| match event {
             Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
             Event::Window(window::Event::CloseRequested) => Some(Message::CloseRequested),
             Event::Keyboard(keyboard::Event::KeyPressed {
@@ -420,7 +430,8 @@ impl Bia {
                 free.then_some(Message::Shortcut(shortcut))
             }
             _ => None,
-        })
+        });
+        Subscription::batch([keys, Subscription::run(lsp_events)])
     }
 
     // ── Queries used by the view ─────────────────────────────────────────
@@ -541,6 +552,13 @@ impl Bia {
                 if self.dialog.is_some() {
                     return Task::none();
                 }
+                let typed = match &input {
+                    Input::Text(text) => text.chars().last(),
+                    _ => None,
+                };
+                let Some(path) = self.tabs.active().map(|t| t.path.clone()) else {
+                    return Task::none();
+                };
                 let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
                 let revision = buffer.revision();
                 let reply = buffer.input(input);
@@ -548,15 +566,43 @@ impl Bia {
                 let syntax = buffer.editor.syntax.clone();
                 if edited {
                     self.refresh_find();
+                    self.lsp.stale.insert(path.clone());
+                    self.lsp.hover = None;
                 }
-                match reply {
-                    Reply::None => {}
-                    Reply::Clipboard(text) => return iced::clipboard::write(text),
+                self.follow_completion(&path, typed);
+                let sync = self.schedule_lsp_sync();
+                let task = match reply {
+                    Reply::None => Task::none(),
+                    Reply::Clipboard(text) => iced::clipboard::write(text),
                     Reply::NoComments => {
                         let text = self.look.i18n.f("notice.no_comments", &[("language", &syntax)]);
                         self.error(text);
+                        Task::none()
                     }
+                    Reply::Lsp(action) => self.lsp_action(&path, action),
+                };
+                return Task::batch([task, sync]);
+            }
+            Message::LspChannel(sender) => {
+                self.lsp.sink = Some(sender);
+                self.sync_lsp();
+            }
+            Message::Lsp(event) => {
+                let ready = matches!(event, bia_core::lsp::Event::Ready { .. });
+                let active = self
+                    .tabs
+                    .active()
+                    .and_then(|t| Some((t.path.as_path(), t.buffer()?)))
+                    .map(|(p, b)| (p, b.editor.rope(), b.cursor_offset()));
+                let effects = self.lsp.event(event, active);
+                if ready {
+                    self.sync_lsp();
                 }
+                return self.apply_lsp(effects);
+            }
+            Message::LspSync => {
+                self.lsp.sync_scheduled = false;
+                self.sync_lsp();
             }
             Message::EditorScrolled(offset) => {
                 if let Some(tab) = self.tabs.active_mut() {
@@ -565,6 +611,10 @@ impl Bia {
             }
             Message::Save => {
                 self.save(self.tabs.active_index(), false);
+                if let Some(path) = self.tabs.active().map(|t| t.path.clone()) {
+                    self.sync_lsp();
+                    self.lsp.saved(&path);
+                }
                 return self.refresh_git();
             }
             Message::GitBase(path, base) => {
@@ -740,7 +790,7 @@ impl Bia {
                 if let Some(palette) = &mut self.palette {
                     let count = match &palette.mode {
                         PaletteMode::Files { results, .. } => results.len(),
-                        PaletteMode::Line => 0,
+                        PaletteMode::Line | PaletteMode::Rename { .. } => 0,
                     };
                     palette.selected = match shortcut {
                         Shortcut::Up => palette.selected.saturating_sub(1),
@@ -826,6 +876,248 @@ impl Bia {
         }
         let restore = self.restore_session(&root, session.unwrap_or_default());
         Task::batch([restore, self.refresh_git()])
+    }
+
+    // ── Language servers ─────────────────────────────────────────────────
+
+    /// Starts the servers open files need and sends them edited text.
+    fn sync_lsp(&mut self) {
+        let root =
+            self.tree.as_ref().map(|t| t.root().to_path_buf()).or_else(|| {
+                self.tabs.active().and_then(|t| t.path.parent().map(Path::to_path_buf))
+            });
+        let Some(root) = root else { return };
+        if let Some(error) = self.lsp.sync(&self.tabs, &root, &self.settings.language_servers) {
+            let text = self.look.i18n.f("notice.lsp_failed", &[("error", &error)]);
+            self.error(text);
+        }
+    }
+
+    /// Sends edits a moment after typing stops, rather than on every key.
+    fn schedule_lsp_sync(&mut self) -> Task<Message> {
+        if self.lsp.sync_scheduled || self.lsp.stale.is_empty() {
+            return Task::none();
+        }
+        self.lsp.sync_scheduled = true;
+        Task::perform(sleep(Duration::from_millis(150)), |()| Message::LspSync)
+    }
+
+    /// Keeps the completion list in step with the cursor, and opens it
+    /// while typing a word or after a trigger character (`.`).
+    fn follow_completion(&mut self, path: &Path, typed: Option<char>) {
+        let start_list = typed.is_some_and(|c| {
+            self.lsp.completion.is_none()
+                && self.lsp.supports(path, "completionProvider")
+                && (c.is_alphanumeric()
+                    || c == '_'
+                    || self.lsp.triggers(path).iter().any(|t| t.ends_with(c)))
+        });
+        if start_list {
+            self.sync_lsp();
+        }
+        let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else { return };
+        let rope = buffer.editor.rope();
+        let cursor = buffer.cursor_offset();
+        if self.lsp.completion.is_some() {
+            self.lsp.refilter(path, rope, cursor);
+        } else if start_list {
+            self.lsp.complete(path, rope, word_start(rope, cursor), cursor);
+        }
+    }
+
+    fn lsp_action(&mut self, path: &Path, action: LspAction) -> Task<Message> {
+        match action {
+            LspAction::Hover(None) => self.lsp.hover = None,
+            LspAction::Hover(Some(at)) => {
+                let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else {
+                    return Task::none();
+                };
+                // Problems at that spot go on the card first.
+                let problems: Vec<String> = self
+                    .lsp
+                    .problems(path, buffer.editor.rope())
+                    .into_iter()
+                    .filter(|(r, ..)| r.start <= at && at <= r.end.max(r.start + 1))
+                    .map(|(_, _, m)| m.to_owned())
+                    .collect();
+                self.lsp.hover =
+                    (!problems.is_empty()).then(|| (path.to_owned(), at, problems.join("\n\n")));
+                if self.lsp.supports(path, "hoverProvider") {
+                    self.sync_lsp();
+                    if let Some(buffer) = self.tabs.active().and_then(Tab::buffer) {
+                        self.lsp.hover(path, buffer.editor.rope(), at);
+                    }
+                }
+            }
+            LspAction::Definition(at) => {
+                self.sync_lsp();
+                let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else {
+                    return Task::none();
+                };
+                if !self.lsp.definition(path, buffer.editor.rope(), at) {
+                    self.no_server();
+                }
+            }
+            LspAction::Complete => {
+                self.sync_lsp();
+                let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else {
+                    return Task::none();
+                };
+                let (rope, cursor) = (buffer.editor.rope(), buffer.cursor_offset());
+                if !self.lsp.complete(path, rope, word_start(rope, cursor), cursor) {
+                    self.no_server();
+                }
+            }
+            LspAction::Pick(pick) => {
+                let Some(list) = &mut self.lsp.completion else { return Task::none() };
+                let n = list.shown.len().max(1);
+                match pick {
+                    Pick::Up => list.selected = (list.selected + n - 1) % n,
+                    Pick::Down => list.selected = (list.selected + 1) % n,
+                    Pick::Cancel => self.lsp.completion = None,
+                    Pick::Accept => {
+                        let list = self.lsp.completion.take();
+                        let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
+                        let cursor = buffer.cursor_offset();
+                        if let Some((range, insert)) =
+                            list.and_then(|l| l.chosen(buffer.editor.rope(), cursor))
+                        {
+                            buffer.replace_range(range, &insert);
+                            self.lsp.stale.insert(path.to_owned());
+                            self.refresh_find();
+                            return self.schedule_lsp_sync();
+                        }
+                    }
+                }
+            }
+            LspAction::Format => {
+                self.sync_lsp();
+                let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else {
+                    return Task::none();
+                };
+                let indent = buffer.editor.indent;
+                if !self.lsp.format(path, buffer.revision(), indent.width, !indent.tabs) {
+                    self.no_server();
+                }
+            }
+            LspAction::Rename(at) => {
+                let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else {
+                    return Task::none();
+                };
+                if !self.lsp.supports(path, "renameProvider") {
+                    self.no_server();
+                    return Task::none();
+                }
+                let word = buffer.editor.word_range(at);
+                let query = buffer.editor.slice(word);
+                self.palette = Some(Palette {
+                    mode: PaletteMode::Rename { path: path.to_owned(), at },
+                    query,
+                    selected: 0,
+                });
+                return Task::batch([
+                    operation::focus(PALETTE_ID),
+                    operation::select_all(PALETTE_ID),
+                ]);
+            }
+            LspAction::NextProblem { back } => {
+                let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else {
+                    return Task::none();
+                };
+                let cursor = buffer.cursor_offset();
+                let starts: Vec<usize> = self
+                    .lsp
+                    .problems(path, buffer.editor.rope())
+                    .iter()
+                    .map(|(r, ..)| r.start)
+                    .collect();
+                let next = if back {
+                    starts.iter().rev().find(|&&s| s < cursor).or(starts.last())
+                } else {
+                    starts.iter().find(|&&s| s > cursor).or(starts.first())
+                };
+                let Some(&at) = next else {
+                    let text = self.look.i18n.t("notice.no_problems").to_owned();
+                    self.info(text);
+                    return Task::none();
+                };
+                self.center_seq += 1;
+                let seq = self.center_seq;
+                if let Some(buffer) = self.active_buffer_mut() {
+                    buffer.select(at..at);
+                    buffer.center = seq;
+                }
+            }
+        }
+        Task::none()
+    }
+
+    fn no_server(&mut self) {
+        let language = self
+            .tabs
+            .active()
+            .and_then(Tab::buffer)
+            .map(|b| b.editor.syntax.clone())
+            .unwrap_or_default();
+        let text = self.look.i18n.f("notice.no_lsp", &[("language", &language)]);
+        self.error(text);
+    }
+
+    /// Does what server replies call for.
+    fn apply_lsp(&mut self, effects: Vec<Effect>) -> Task<Message> {
+        let mut tasks = Vec::new();
+        for effect in effects {
+            match effect {
+                Effect::Open { path, range, encoding } => {
+                    tasks.push(self.open(path));
+                    self.center_seq += 1;
+                    let seq = self.center_seq;
+                    if let Some(buffer) = self.active_buffer_mut() {
+                        let at = bia_core::lsp::text::offset(
+                            buffer.editor.rope(),
+                            range.start,
+                            encoding,
+                        );
+                        buffer.select(at..at);
+                        buffer.center = seq;
+                    }
+                }
+                Effect::Edit { path, edits, encoding, revision } => {
+                    if self.tabs.position(&path).is_none() {
+                        tasks.push(self.open(path.clone()));
+                    }
+                    let Some(buffer) =
+                        self.tabs.position(&path).and_then(|i| self.tabs.get_mut(i)?.buffer_mut())
+                    else {
+                        continue;
+                    };
+                    if revision.is_some_and(|r| r != buffer.revision()) {
+                        continue;
+                    }
+                    let rope = buffer.editor.rope();
+                    let mut ranges: Vec<(Range<usize>, String)> = edits
+                        .iter()
+                        .map(|(r, t)| (bia_core::lsp::text::offsets(rope, *r, encoding), t.clone()))
+                        .collect();
+                    ranges.sort_by_key(|(r, _)| (r.start, r.end));
+                    ranges.dedup_by(|b, a| b.0.start < a.0.end);
+                    buffer.replace_all(&ranges);
+                    self.lsp.stale.insert(path);
+                    self.lsp.hover = None;
+                }
+                Effect::Notice(count) => {
+                    let text = self.look.i18n.f("notice.renamed", &[("count", &count)]);
+                    self.info(text);
+                }
+                Effect::Error(error) => {
+                    let text = self.look.i18n.f("notice.lsp_error", &[("error", &error)]);
+                    self.error(text);
+                }
+            }
+        }
+        self.refresh_find();
+        tasks.push(self.schedule_lsp_sync());
+        Task::batch(tasks)
     }
 
     // ── Git ──────────────────────────────────────────────────────────────
@@ -946,6 +1238,8 @@ impl Bia {
     /// backup is needed any more.
     fn exit(&mut self) -> Task<Message> {
         self.save_session();
+        // Servers read EOF on their stdin and stop.
+        self.lsp.restart();
         let dir = paths::backups_dir();
         for tab in self.tabs.iter_mut() {
             if tab.backup.take().is_some() {
@@ -994,6 +1288,7 @@ impl Bia {
         let base = is_text.then(|| git_base(tab.path.clone()));
         self.tabs.insert(tab);
         self.reveal_active();
+        self.sync_lsp();
         Task::batch([operation::focus(EDITOR_ID)].into_iter().chain(base))
     }
 
@@ -1054,6 +1349,7 @@ impl Bia {
         if self.tabs.is_empty() {
             self.find = None;
         }
+        self.sync_lsp();
         Task::none()
     }
 
@@ -1155,6 +1451,9 @@ impl Bia {
     }
 
     fn apply_settings(&mut self, settings: Settings) {
+        if settings.language_servers != self.settings.language_servers {
+            self.lsp.restart();
+        }
         let (look, errors) = Look::load(&settings, self.look.generation + 1);
         self.look = look;
         if let Some(tree) = &mut self.tree {
@@ -1575,6 +1874,20 @@ impl Bia {
 
     fn submit_palette(&mut self) -> Task<Message> {
         let Some(palette) = &self.palette else { return Task::none() };
+        if let PaletteMode::Rename { path, at } = &palette.mode {
+            let (path, at, name) = (path.clone(), *at, palette.query.trim().to_owned());
+            self.palette = None;
+            if name.is_empty() {
+                return Task::none();
+            }
+            self.sync_lsp();
+            if let Some(buffer) =
+                self.tabs.position(&path).and_then(|i| self.tabs.get_mut(i)?.buffer())
+            {
+                self.lsp.rename(&path, buffer.editor.rope(), at, &name);
+            }
+            return operation::focus(EDITOR_ID);
+        }
         let (line, column) = match &palette.mode {
             // `42` or `42:7`
             PaletteMode::Line => {
@@ -1601,6 +1914,7 @@ impl Bia {
                     (None, _) => return Task::none(),
                 }
             }
+            PaletteMode::Rename { .. } => return Task::none(),
         };
         self.palette = None;
         self.go_to_line(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1))
@@ -1611,6 +1925,32 @@ impl Bia {
 fn relative_path(root: &Path, path: &Path) -> Option<String> {
     let relative = path.strip_prefix(root).ok()?;
     Some(relative.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>().join("/"))
+}
+
+/// Start of the word that ends at `cursor`.
+fn word_start(rope: &ropey::Rope, cursor: usize) -> usize {
+    let mut start = cursor;
+    let mut chars = rope.chars_at(rope.byte_to_char(cursor));
+    while let Some(c) = chars.prev() {
+        if !(c.is_alphanumeric() || c == '_') {
+            break;
+        }
+        start -= c.len_utf8();
+    }
+    start
+}
+
+/// Events from language servers. The first message hands the app the
+/// sender that server threads write to.
+fn lsp_events() -> impl iced::futures::Stream<Item = Message> {
+    use iced::futures::{SinkExt, StreamExt};
+    iced::stream::channel(64, async |mut output| {
+        let (sender, mut events) = iced::futures::channel::mpsc::unbounded();
+        let _ = output.send(Message::LspChannel(sender)).await;
+        while let Some(event) = events.next().await {
+            let _ = output.send(Message::Lsp(event)).await;
+        }
+    })
 }
 
 /// The committed text of `path`, read in the background.

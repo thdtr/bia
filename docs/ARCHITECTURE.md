@@ -144,6 +144,7 @@ few things an editor can't really do without:
 | Find options and find in files | Searching a project means case, whole words and regex, in every file. |
 | Comment, move, duplicate, delete lines; closing pairs | What hands expect in any code editor. Comment tokens are a table in `editing.rs`, since the built-in grammars don't carry them. |
 | Reopen the open files | `state.json` keeps each folder's tabs and cursors. |
+| Language servers | Errors and warnings underlined as you type, hover cards, completion, go to definition, format, rename, next problem. `bia-core/lsp` speaks JSON-RPC over the server's stdio from a thread; the app keeps one server per language and sends each file's full text 150 ms after edits stop. Positions are UTF-8 when the server agrees, UTF-16 otherwise. Servers are named in `language_servers`, never found or downloaded. |
 | Git: changed lines, changed files, the branch | Marks beside the line numbers, colors in the tree, the branch in the status bar. Refreshed on save and when the window gets focus back. |
 | Backups of unsaved edits | Written to `backups/` two seconds after the last edit, removed on save or discard. A crash loses at most those two seconds. |
 
@@ -159,7 +160,7 @@ few things an editor can't really do without:
 
 ## Not in BIA yet
 
-There's no terminal, debugger, LSP, plugins or AI in BIA today. Some
+There's no terminal, debugger, plugins or AI in BIA today. Some
 of them may come. Each one adds a lot to a small codebase (LSP alone would roughly
 double it), so open an issue to talk it through before writing code.
 

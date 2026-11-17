@@ -18,6 +18,7 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
     let placeholder = match palette.mode {
         PaletteMode::Files { .. } => t.t("palette.files"),
         PaletteMode::Line => t.t("palette.line"),
+        PaletteMode::Rename { .. } => t.t("palette.rename"),
     };
     let input = text_input(placeholder, &palette.query)
         .id(PALETTE_ID)
@@ -62,6 +63,7 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
                 list.into()
             }
         }
+        PaletteMode::Rename { .. } => note_row(app, t.t("palette.rename_hint").to_owned()),
         PaletteMode::Line => {
             let note = match app.tabs.active().and_then(Tab::buffer) {
                 Some(buffer) => t.f(
