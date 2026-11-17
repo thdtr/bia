@@ -64,6 +64,9 @@ const MAX_FILES: usize = 50_000;
 /// "Find in files" stops after this many matches.
 const MAX_HITS: usize = 2_000;
 
+/// Edits go to the language server this long after typing stops.
+const LSP_DELAY: Duration = Duration::from_millis(150);
+
 /// Unsaved edits are written to `backups/` this long after the last one.
 const BACKUP_DELAY: Duration = Duration::from_secs(2);
 
@@ -584,7 +587,7 @@ impl Bia {
                 let syntax = buffer.editor.syntax.clone();
                 if edited {
                     self.refresh_find();
-                    self.lsp.stale.insert(path.clone());
+                    self.lsp.edited(path.clone());
                     self.lsp.hover = None;
                 }
                 self.follow_completion(&path, typed);
@@ -620,6 +623,11 @@ impl Bia {
             }
             Message::LspSync => {
                 self.lsp.sync_scheduled = false;
+                // Still typing: wait for the pause.
+                let quiet = self.lsp.edited_at.map_or(LSP_DELAY, |at| at.elapsed());
+                if quiet < LSP_DELAY {
+                    return self.schedule_lsp_sync_in(LSP_DELAY - quiet);
+                }
                 self.sync_lsp();
             }
             Message::TermChannel(sender) => self.term_events = Some(sender),
@@ -975,13 +983,18 @@ impl Bia {
         }
     }
 
-    /// Sends edits a moment after typing stops, rather than on every key.
+    /// Sends edits [`LSP_DELAY`] after typing stops, rather than on every
+    /// key. One timer at a time: when it fires during typing, it waits again.
     fn schedule_lsp_sync(&mut self) -> Task<Message> {
+        self.schedule_lsp_sync_in(LSP_DELAY)
+    }
+
+    fn schedule_lsp_sync_in(&mut self, delay: Duration) -> Task<Message> {
         if self.lsp.sync_scheduled || self.lsp.stale.is_empty() {
             return Task::none();
         }
         self.lsp.sync_scheduled = true;
-        Task::perform(sleep(Duration::from_millis(150)), |()| Message::LspSync)
+        Task::perform(sleep(delay), |()| Message::LspSync)
     }
 
     /// Keeps the completion list in step with the cursor, and opens it
@@ -1069,7 +1082,7 @@ impl Bia {
                             list.and_then(|l| l.chosen(buffer.editor.rope(), cursor))
                         {
                             buffer.replace_range(range, &insert);
-                            self.lsp.stale.insert(path.to_owned());
+                            self.lsp.edited(path.to_owned());
                             self.refresh_find();
                             return self.schedule_lsp_sync();
                         }
@@ -1188,7 +1201,7 @@ impl Bia {
                     ranges.sort_by_key(|(r, _)| (r.start, r.end));
                     ranges.dedup_by(|b, a| b.0.start < a.0.end);
                     buffer.replace_all(&ranges);
-                    self.lsp.stale.insert(path);
+                    self.lsp.edited(path);
                     self.lsp.hover = None;
                 }
                 Effect::Notice(count) => {

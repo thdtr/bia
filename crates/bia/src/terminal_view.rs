@@ -3,6 +3,7 @@
 //! cached `Paragraph`, placed at their column so the grid stays aligned.
 
 use crate::fonts;
+use crate::frame_cache::FrameCache;
 use crate::terminal::{Size, Terminal, key_bytes};
 use crate::ui::style::Colors;
 use alacritty_terminal::grid::Dimensions;
@@ -24,7 +25,6 @@ use iced::{
     Size as UiSize, Theme, font, keyboard, window,
 };
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 type Renderer = iced::Renderer;
@@ -89,7 +89,7 @@ impl<'a, Message> TerminalView<'a, Message> {
 
 #[derive(Default)]
 struct Cache {
-    paragraphs: HashMap<u64, Paragraph>,
+    paragraphs: FrameCache<Paragraph>,
     cell: (Option<(Font, u32)>, f32),
 }
 
@@ -333,9 +333,7 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {
         let (cw, ch) = self.cell(&mut cache);
         let c = self.colors;
         let palette = Palette::for_colors(c);
-        if cache.paragraphs.len() > 4_000 {
-            cache.paragraphs.clear();
-        }
+        cache.paragraphs.next_frame();
 
         let term = self.terminal.term.lock();
         let content = term.renderable_content();
@@ -481,9 +479,10 @@ fn paragraph(
     let mut hasher = std::hash::DefaultHasher::new();
     (content, base, size.to_bits(), bold, italic).hash(&mut hasher);
     let key = hasher.finish();
-    if let Some(p) = cache.paragraphs.get(&key) {
-        return p.clone();
-    }
+    cache.paragraphs.get_or_insert_with(key, || styled(content, base, size, bold, italic, key))
+}
+
+fn styled(content: &str, base: Font, size: f32, bold: bool, italic: bool, key: u64) -> Paragraph {
     let mut font = base;
     if bold {
         font.weight = font::Weight::Bold;
@@ -491,7 +490,7 @@ fn paragraph(
     if italic {
         font.style = font::Style::Italic;
     }
-    let p = Paragraph::with_text(text::Text {
+    Paragraph::with_text(text::Text {
         content,
         bounds: fonts::tagged_bounds(f32::INFINITY, key),
         size: Pixels(size),
@@ -501,9 +500,7 @@ fn paragraph(
         align_y: Vertical::Top,
         shaping: Shaping::Advanced,
         wrapping: Wrapping::None,
-    });
-    cache.paragraphs.insert(key, p.clone());
-    p
+    })
 }
 
 /// The 16 ANSI colors, picked to sit well on the theme's background.

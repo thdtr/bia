@@ -10,6 +10,7 @@ mod row;
 
 use crate::buffer::GitMarks;
 use crate::fonts;
+use crate::frame_cache::FrameCache;
 use crate::keys::{self, Command};
 use crate::syntax::{self, Highlights, LineStyle};
 use crate::ui::style::Colors;
@@ -29,7 +30,6 @@ use iced::{
 };
 use row::RowText;
 use std::cell::{Ref, RefCell};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::time::{Duration, Instant};
@@ -44,8 +44,6 @@ const GUTTER_RIGHT: f32 = 18.0;
 const TEXT_LEFT: f32 = 4.0;
 const SCROLLBAR: f32 = 10.0;
 const BLINK: Duration = Duration::from_millis(500);
-/// Paragraphs kept before the cache starts over.
-const MAX_CACHED: usize = 3_000;
 
 /// What the editor asks the app to do.
 #[derive(Debug, Clone)]
@@ -240,7 +238,7 @@ enum Bar {
 
 #[derive(Default)]
 struct Cache {
-    paragraphs: HashMap<u64, Paragraph>,
+    paragraphs: FrameCache<Paragraph>,
     char_width: Option<((Font, u32, u32), f32)>,
     /// The widest line in cells, by editor revision and file.
     widest: Option<((u64, u64), usize)>,
@@ -914,9 +912,7 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
             self.highlights.borrow_mut().lines(self.editor, self.syntax, first_line..last_line + 1);
         // iced keeps only weak references to paragraphs until it renders,
         // so everything drawn comes from (and stays in) the cache.
-        if cache.paragraphs.len() > MAX_CACHED {
-            cache.paragraphs.clear();
-        }
+        cache.paragraphs.next_frame();
         let mut rows: Vec<(usize, Row, RowText, Paragraph)> = Vec::new();
         let mut line_text = (usize::MAX, String::new());
         for row in first..=last {
@@ -1024,6 +1020,8 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
         let selections = self.editor.selections();
         let primary = selections.primary();
         let focused = state.focus.is_some();
+        let brackets =
+            if primary.is_empty() { self.editor.matching_bracket(primary.head) } else { None };
 
         renderer.with_layer(bounds, |renderer| {
             fill(renderer, bounds, c.background);
@@ -1061,9 +1059,7 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                     }
                 }
                 // The bracket pair at the cursor.
-                if primary.is_empty()
-                    && let Some((open, close)) = self.editor.matching_bracket(primary.head)
-                {
+                if let Some((open, close)) = brackets {
                     for at in [open, close] {
                         if let Some(rect) =
                             span_rect(*row, r, row_text, paragraph, at..at + 1, line_start)
@@ -1294,13 +1290,20 @@ impl<Message> CodeView<'_, Message> {
         (&row_text.text, &runs, self.font, self.size.to_bits(), self.line_height.to_bits())
             .hash(&mut hasher);
         let key = hasher.finish();
-        if let Some(p) = cache.paragraphs.get(&key) {
-            return p.clone();
-        }
+        cache.paragraphs.get_or_insert_with(key, || self.styled_paragraph(row_text, &runs, key))
+    }
+
+    /// A row's paragraph, with `runs` styling its text.
+    fn styled_paragraph(
+        &self,
+        row_text: &RowText,
+        runs: &[(Range<usize>, syntax::Style)],
+        key: u64,
+    ) -> Paragraph {
         let text = &row_text.text;
         let mut spans: Vec<Span<'_, (), Font>> = Vec::new();
         let mut at = 0;
-        for (range, s) in &runs {
+        for (range, s) in runs {
             if range.start > at {
                 spans.push(Span::new(&text[at..range.start]));
             }
@@ -1321,9 +1324,7 @@ impl<Message> CodeView<'_, Message> {
         if at < text.len() || spans.is_empty() {
             spans.push(Span::new(&text[at..]));
         }
-        let paragraph = self.paragraph(text, &spans, key);
-        cache.paragraphs.insert(key, paragraph.clone());
-        paragraph
+        self.paragraph(text, &spans, key)
     }
 
     /// Interface text in the editor font, a little smaller, wrapped at
@@ -1333,22 +1334,20 @@ impl<Message> CodeView<'_, Message> {
         let mut hasher = std::hash::DefaultHasher::new();
         ("text", content, width.map(f32::to_bits), self.font, size.to_bits()).hash(&mut hasher);
         let key = hasher.finish();
-        if let Some(p) = cache.paragraphs.get(&key) {
-            return p.clone();
-        }
-        let paragraph = Paragraph::with_text(text::Text {
-            content,
-            bounds: fonts::tagged_bounds(width.unwrap_or(f32::INFINITY), key),
-            size: Pixels(size),
-            line_height: LineHeight::Relative(1.4),
-            font: self.font,
-            align_x: text::Alignment::Default,
-            align_y: Vertical::Top,
-            shaping: Shaping::Advanced,
-            wrapping: if width.is_some() { Wrapping::WordOrGlyph } else { Wrapping::None },
-        });
-        cache.paragraphs.insert(key, paragraph.clone());
-        paragraph
+        let make = || {
+            Paragraph::with_text(text::Text {
+                content,
+                bounds: fonts::tagged_bounds(width.unwrap_or(f32::INFINITY), key),
+                size: Pixels(size),
+                line_height: LineHeight::Relative(1.4),
+                font: self.font,
+                align_x: text::Alignment::Default,
+                align_y: Vertical::Top,
+                shaping: Shaping::Advanced,
+                wrapping: if width.is_some() { Wrapping::WordOrGlyph } else { Wrapping::None },
+            })
+        };
+        cache.paragraphs.get_or_insert_with(key, make)
     }
 
     /// A line number, cached like the rows.
@@ -1356,12 +1355,7 @@ impl<Message> CodeView<'_, Message> {
         let mut hasher = std::hash::DefaultHasher::new();
         ("gutter", n, self.font, self.size.to_bits(), self.line_height.to_bits()).hash(&mut hasher);
         let key = hasher.finish();
-        if let Some(p) = cache.paragraphs.get(&key) {
-            return p.clone();
-        }
-        let paragraph = self.paragraph(&n.to_string(), &[], key);
-        cache.paragraphs.insert(key, paragraph.clone());
-        paragraph
+        cache.paragraphs.get_or_insert_with(key, || self.paragraph(&n.to_string(), &[], key))
     }
 
     fn drag_bar(

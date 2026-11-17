@@ -97,6 +97,8 @@ pub struct Lsp {
     pending: HashMap<(ServerId, u64), Pending>,
     /// Files edited since the server last got their text.
     pub stale: HashSet<PathBuf>,
+    /// When the last of those edits was made.
+    pub edited_at: Option<std::time::Instant>,
     pub sync_scheduled: bool,
     pub hover: Option<(PathBuf, usize, String)>,
     pub completion: Option<CompletionState>,
@@ -122,6 +124,13 @@ fn language_id(syntax: &str) -> String {
 }
 
 impl Lsp {
+    /// Notes that `path` was edited: its text goes to the server once
+    /// typing pauses.
+    pub fn edited(&mut self, path: PathBuf) {
+        self.stale.insert(path);
+        self.edited_at = Some(std::time::Instant::now());
+    }
+
     /// Stops every server; they start again as files need them.
     pub fn restart(&mut self) {
         self.servers.clear();

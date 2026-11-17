@@ -11,6 +11,7 @@ mod app;
 mod buffer;
 mod code_view;
 mod fonts;
+mod frame_cache;
 mod icons;
 mod keys;
 mod lsp;

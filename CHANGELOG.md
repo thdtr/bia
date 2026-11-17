@@ -6,6 +6,21 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- The editor and the terminal keep only the text drawn in the last two frames. Scrolling
+  through a long file used about 50 MB less, and a terminal with a lot of output about
+  110 MB less.
+- Highlighting parses lines without their line break, which is 15–25% faster in some
+  languages.
+
+### Fixed
+
+- Language servers got the whole file every 150 ms while you typed, instead of once,
+  150 ms after you stopped.
+- With the cursor next to a bracket, each frame looked for the matching one once per
+  line on screen instead of once.
+
 ## [0.3.0] - 2026-11-17
 
 ### Added

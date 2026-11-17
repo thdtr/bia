@@ -117,9 +117,9 @@ impl Highlights {
         let (mut parser, mut stack) = (parser.clone(), ScopeStack::new());
         let highlighter = Highlighter::new(cx.theme);
         for line in lines {
-            let text = editor.line(line) + "\n";
+            let text = editor.line(line);
             let ops = parser.parse_line(&text, cx.syntaxes).unwrap_or_default();
-            let styled = styles(&ops, text.len() - 1, &mut stack, &highlighter);
+            let styled = styles(&ops, text.len(), &mut stack, &highlighter);
             self.guesses.insert(line, Rc::new(styled));
         }
     }
@@ -188,10 +188,11 @@ impl Highlights {
                     return false;
                 }
             }
-            // syntect wants the line break, for grammars that match on it.
-            let text = editor.line(line) + "\n";
+            // The grammars are the "no newlines" build: lines go in without
+            // their `\n`, which also parses faster.
+            let text = editor.line(line);
             let ops = parser.parse_line(&text, cx.syntaxes).unwrap_or_default();
-            let styled = styles(&ops, text.len() - 1, &mut stack, &highlighter);
+            let styled = styles(&ops, text.len(), &mut stack, &highlighter);
             if line >= from {
                 self.lines.insert(line, Rc::new(styled));
                 self.guesses.remove(&line);
