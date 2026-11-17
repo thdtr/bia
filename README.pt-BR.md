@@ -38,6 +38,9 @@ ou rodar `cargo install --git https://github.com/thdtr/bia bia`. Para desinstala
 adicione `--uninstall` (`... | sh -s -- --uninstall`). No Windows, defina
 `$env:BIA_UNINSTALL=1` e rode o comando de instalação de novo.
 
+Para atualizar, rode o comando de instalação de novo. Suas configurações continuam
+como estão.
+
 ### Aviso na primeira vez
 
 Os binários do BIA não são assinados com certificado pago. Se você baixar pela página

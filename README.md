@@ -37,6 +37,8 @@ You can also grab a build from [releases](https://github.com/thdtr/bia/releases)
 (`... | sh -s -- --uninstall`). On Windows, set `$env:BIA_UNINSTALL=1` and run the
 install command again.
 
+To update, run the install command again. Your settings stay as they are.
+
 ### Warning on first launch
 
 BIA builds aren't signed with a paid certificate. If you download one from the
