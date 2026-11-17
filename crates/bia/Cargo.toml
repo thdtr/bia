@@ -22,8 +22,11 @@ bia-core.workspace = true
 iced = { version = "0.14", features = ["markdown", "advanced", "svg"] }
 # Native "Open folder" dialog (XDG portal on Linux, no GTK).
 rfd = "0.17"
+ropey = { version = "1.6", default-features = false, features = ["simd"] }
 # Deleting from the explorer moves to the OS trash. Never a hard delete.
 trash = "5"
+# Cursor x positions: iced measures text by grapheme.
+unicode-segmentation = "1"
 
 # Puts the app icon into bia.exe (see build.rs).
 [target.'cfg(windows)'.build-dependencies]

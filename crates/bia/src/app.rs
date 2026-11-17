@@ -6,14 +6,15 @@
 //!
 //! This module only orchestrates. The pieces it coordinates live elsewhere:
 //! open files in `tabs.rs`, one file's text in `buffer.rs`, file operations
-//! in `bia_core::fs_ops`, editor geometry in `ui::layout`.
+//! in `bia_core::fs_ops`, the editor widget in `code_view`.
 
-use crate::buffer::Buffer;
+use crate::buffer::{Buffer, Reply};
+use crate::code_view::Input;
 use crate::fonts;
-use crate::highlighter;
-use crate::keys::{self, EditorCommand, Shortcut};
+use crate::keys::{self, Shortcut};
+use crate::syntax;
 use crate::tabs::{Body, Tab, Tabs};
-use crate::ui::{self, layout::Geometry, layout::LARGE_FILE_LINES, style::Colors};
+use crate::ui::{self, style::Colors};
 use bia_core::backup::{self, Backup};
 use bia_core::document::{self, Document, LoadError};
 use bia_core::fs_ops::{self, FsError};
@@ -30,10 +31,8 @@ use bia_core::text;
 use bia_core::theme::Theme as BiaTheme;
 use bia_core::tree::{self, FileTree};
 use bia_core::{I18n, Lang, paths};
-use iced::widget::scrollable::{AbsoluteOffset, Viewport};
-use iced::widget::text_editor::{Action, Motion};
-use iced::widget::{operation, svg, text_editor};
-use iced::{Event, Font, Subscription, Task, event, keyboard, window};
+use iced::widget::{operation, svg};
+use iced::{Event, Font, Subscription, Task, Vector, event, keyboard, window};
 use std::collections::HashMap;
 use std::fs;
 use std::ops::Range;
@@ -47,7 +46,6 @@ pub const FIND_ID: &str = "bia-find";
 pub const REPLACE_ID: &str = "bia-replace";
 pub const PALETTE_ID: &str = "bia-palette";
 pub const SEARCH_ID: &str = "bia-search";
-pub const EDITOR_SCROLL_ID: &str = "bia-editor-scroll";
 
 /// Notices fade on the next interaction after this long.
 const NOTICE_TTL: Duration = Duration::from_secs(4);
@@ -100,7 +98,7 @@ pub enum Message {
     PromptSubmit,
     SelectTab(usize),
     CloseTab(usize),
-    Edit(text_editor::Action),
+    Input(Input),
     Save,
     TogglePreview,
     LinkClicked(String),
@@ -125,9 +123,7 @@ pub enum Message {
     CloseRequested,
     Dialog(Choice),
     OpenSettings,
-    Command(EditorCommand),
-    EditorScrolled(Viewport),
-    Page { down: bool, select: bool },
+    EditorScrolled(Vector),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,7 +246,6 @@ pub struct Look {
     pub syntaxes: Arc<SyntaxSet>,
     pub editor_font: Font,
     pub ui_font: Font,
-    pub geometry: Geometry,
     /// The logo, painted in the theme's colors.
     pub logo: svg::Handle,
     /// Bumped on every rebuild so highlighters know to start over.
@@ -276,11 +271,6 @@ impl Look {
             colors,
             editor_font,
             ui_font: fonts::from_setting(&settings.ui_font_family),
-            geometry: Geometry::new(
-                settings.font_size,
-                settings.line_height,
-                fonts::char_width(editor_font, settings.font_size, settings.line_height),
-            ),
             logo: ui::style::logo(colors),
             generation,
             i18n,
@@ -303,7 +293,6 @@ pub struct Bia {
     pub panel: Panel,
     pub project_search: ProjectSearch,
     pub dialog: Option<Dialog>,
-    editor_viewport: Option<Viewport>,
     /// `font_size` as settings.json has it, while zoom changes the live one.
     font_size_setting: f32,
     /// Folders opened before, most recent first, for the welcome screen.
@@ -312,6 +301,8 @@ pub struct Bia {
     /// so its open files are remembered.
     remember_root: bool,
     backup_scheduled: bool,
+    /// Numbers requests to center the cursor (see `Buffer::center`).
+    center_seq: u64,
 }
 
 impl Bia {
@@ -325,6 +316,7 @@ impl Bia {
             recent: state.recent_folders(),
             remember_root: false,
             backup_scheduled: false,
+            center_seq: 0,
             font_size_setting: settings.font_size,
             settings,
             look,
@@ -339,7 +331,6 @@ impl Bia {
             panel: Panel::Files,
             project_search: ProjectSearch::default(),
             dialog: None,
-            editor_viewport: None,
         };
         if let Some(e) = settings_error {
             let text = app.settings_error_text(&e);
@@ -426,22 +417,16 @@ impl Bia {
 
     // ── Queries used by the view ─────────────────────────────────────────
 
-    pub fn highlighter_settings(&self, buffer: &Buffer) -> highlighter::Settings {
-        highlighter::Settings {
-            syntax: buffer.syntax.clone(),
-            syntaxes: Arc::clone(&self.look.syntaxes),
-            theme: Arc::clone(&self.look.syntax_theme),
-            font: self.look.editor_font,
+    pub fn syntax_context(&self) -> syntax::Context<'_> {
+        syntax::Context {
+            syntaxes: &self.look.syntaxes,
+            theme: &self.look.syntax_theme,
             generation: self.look.generation,
         }
     }
 
     pub fn is_markdown(&self, tab: &Tab) -> bool {
         tab.buffer().is_some() && language::is_markdown(&tab.path)
-    }
-
-    pub fn is_large(&self, buffer: &Buffer) -> bool {
-        buffer.line_count > LARGE_FILE_LINES
     }
 
     fn active_buffer_mut(&mut self) -> Option<&mut Buffer> {
@@ -538,50 +523,37 @@ impl Bia {
             Message::SelectTab(index) => {
                 if self.tabs.select(index) {
                     self.reveal_active();
-                    return Task::batch([operation::focus(EDITOR_ID), self.restore_scroll()]);
+                    return operation::focus(EDITOR_ID);
                 }
             }
             Message::CloseTab(index) => return self.close_tab(index),
 
-            Message::Edit(action) => {
+            Message::Input(input) => {
                 // The text stays as it was while a dialog asks about it.
-                if self.dialog.is_some() && action.is_edit() {
+                if self.dialog.is_some() {
                     return Task::none();
                 }
-                // Clicks and drags happen where the user is looking already.
-                let follow = !matches!(action, Action::Click(_) | Action::Drag(_));
-                let edits = action.is_edit();
-                if let Some(buffer) = self.active_buffer_mut() {
-                    buffer.perform(action);
-                }
-                if edits {
+                let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
+                let revision = buffer.revision();
+                let reply = buffer.input(input);
+                let edited = buffer.revision() != revision;
+                let syntax = buffer.editor.syntax.clone();
+                if edited {
                     self.refresh_find();
                 }
-                if follow {
-                    return self.follow_cursor();
-                }
-            }
-            Message::Command(command) => return self.command(command),
-            Message::EditorScrolled(viewport) => {
-                if let Some(tab) = self.tabs.active_mut() {
-                    tab.scroll = viewport.absolute_offset();
-                }
-                self.editor_viewport = Some(viewport);
-            }
-            Message::Page { down, select } => {
-                let rows = self
-                    .editor_viewport
-                    .map_or(20, |v| (v.bounds().height / self.look.geometry.line) as usize)
-                    .saturating_sub(2)
-                    .max(1);
-                let motion = if down { Motion::Down } else { Motion::Up };
-                let action = if select { Action::Select(motion) } else { Action::Move(motion) };
-                if let Some(buffer) = self.active_buffer_mut() {
-                    for _ in 0..rows {
-                        buffer.perform(action.clone());
+                match reply {
+                    Reply::None => {}
+                    Reply::Clipboard(text) => return iced::clipboard::write(text),
+                    Reply::NoComments => {
+                        let text = self.look.i18n.f("notice.no_comments", &[("language", &syntax)]);
+                        self.error(text);
                     }
                 }
-                return self.follow_cursor();
+            }
+            Message::EditorScrolled(offset) => {
+                if let Some(tab) = self.tabs.active_mut() {
+                    tab.scroll = offset;
+                }
             }
             Message::Save => {
                 self.save(self.tabs.active_index(), false);
@@ -591,6 +563,8 @@ impl Bia {
                 if let Some(buffer) = self.active_buffer_mut().filter(|_| is_md) {
                     let on = buffer.markdown.is_none();
                     buffer.set_preview(on);
+                    // The editor moves into a new layout and starts unfocused.
+                    return operation::focus(EDITOR_ID);
                 }
             }
             Message::LinkClicked(url) => {
@@ -627,7 +601,9 @@ impl Bia {
                 self.refresh_find();
                 return operation::focus(FIND_ID);
             }
-            Message::FindSubmit => return self.find_step(true, true),
+            // Enter in the find field goes to the next match and stays there,
+            // so pressing it again goes on; Escape gets back to the text.
+            Message::FindSubmit => return self.find_step(true, false),
             Message::ShowPanel(panel) => return self.show_panel(panel),
             Message::SearchInput(query) => self.project_search.query = query,
             Message::SearchSubmit => return self.run_search(),
@@ -712,7 +688,6 @@ impl Bia {
                     };
                 }
                 self.refresh_find();
-                return self.follow_cursor();
             }
             Shortcut::Find | Shortcut::Replace => {
                 if self.tabs.active().and_then(Tab::buffer).is_some() {
@@ -785,29 +760,6 @@ impl Bia {
         Task::none()
     }
 
-    fn command(&mut self, command: EditorCommand) -> Task<Message> {
-        if self.dialog.is_some() {
-            return Task::none();
-        }
-        let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
-        match command {
-            EditorCommand::ToggleComment => {
-                if !buffer.toggle_comment() {
-                    let syntax = buffer.syntax.clone();
-                    let text = self.look.i18n.f("notice.no_comments", &[("language", &syntax)]);
-                    self.error(text);
-                    return Task::none();
-                }
-            }
-            EditorCommand::MoveLines { up } => buffer.move_lines(up),
-            EditorCommand::DuplicateLines { down } => buffer.duplicate_lines(down),
-            EditorCommand::DeleteLines => buffer.delete_lines(),
-            EditorCommand::SelectLines => buffer.select_lines(),
-        }
-        self.refresh_find();
-        self.follow_cursor()
-    }
-
     /// Ctrl+= and Ctrl+-: the editor font, one pixel at a time, for this
     /// session. `None` goes back to `font_size` from settings.json.
     fn zoom(&mut self, step: Option<f32>) {
@@ -816,10 +768,6 @@ impl Bia {
             None => self.font_size_setting,
         };
         self.settings.font_size = size;
-        let line_height = self.settings.line_height;
-        let font = self.look.editor_font;
-        self.look.geometry =
-            Geometry::new(size, line_height, fonts::char_width(font, size, line_height));
         let text = self.look.i18n.f("notice.zoom", &[("size", &size)]);
         self.info(text);
     }
@@ -856,19 +804,16 @@ impl Bia {
     /// Reopens a folder's files where their cursors were, then any file in
     /// it with unsaved edits in `backups/` (from a crash).
     fn restore_session(&mut self, root: &Path, session: Session) -> Task<Message> {
-        let height = self.editor_viewport.map_or(600.0, |v| v.bounds().height);
         for file in &session.files {
             if !file.path.is_file() || self.tabs.position(&file.path).is_some() {
                 continue;
             }
             let _ = self.open(file.path.clone());
-            let geometry = self.look.geometry;
-            if let Some(tab) = self.tabs.active_mut()
-                && let Some(buffer) = tab.buffer_mut()
-            {
+            self.center_seq += 1;
+            let seq = self.center_seq;
+            if let Some(buffer) = self.active_buffer_mut() {
                 buffer.go_to(file.line, file.column);
-                let y = geometry.centered(buffer.cursor_pos().line, height);
-                tab.scroll = AbsoluteOffset { x: 0.0, y };
+                buffer.center = seq;
             }
         }
         let active = session.files.get(session.active).and_then(|f| self.tabs.position(&f.path));
@@ -882,7 +827,7 @@ impl Bia {
             self.tabs.select(i);
         }
         self.reveal_active();
-        Task::batch([operation::focus(EDITOR_ID), self.restore_scroll()])
+        operation::focus(EDITOR_ID)
     }
 
     /// Writes the workspace's open files to `state.json`.
@@ -916,7 +861,7 @@ impl Bia {
     /// out of date and none is coming yet.
     fn schedule_backup(&mut self) -> Task<Message> {
         let stale = |t: &Tab| match t.buffer() {
-            Some(b) if b.is_dirty() => t.backup != Some(b.revision),
+            Some(b) if b.is_dirty() => t.backup != Some(b.revision()),
             _ => t.backup.is_some(),
         };
         if self.backup_scheduled || !self.tabs.iter().any(stale) {
@@ -934,11 +879,11 @@ impl Bia {
             let path = tab.path.clone();
             let Some(buffer) = tab.buffer() else { continue };
             if buffer.is_dirty() {
-                if tab.backup != Some(buffer.revision) {
-                    let b = Backup::new(path, buffer.text().to_owned(), buffer.modified);
+                if tab.backup != Some(buffer.revision()) {
+                    let b = Backup::new(path, buffer.text(), buffer.modified);
                     // On failure, the next edit tries again.
                     if backup::write(&dir, &b).is_ok() {
-                        tab.backup = Some(buffer.revision);
+                        tab.backup = Some(buffer.revision());
                     }
                 }
             } else if tab.backup.take().is_some() {
@@ -970,7 +915,8 @@ impl Bia {
                 let syntax = self.detect_syntax(&path, &doc.text);
                 let indent = Indent::for_file(&path, &doc.text, self.settings.tab_size);
                 let mut buffer = Buffer::new(doc, syntax, indent);
-                buffer.auto_close = self.settings.auto_close;
+                buffer.editor.auto_close = self.settings.auto_close;
+                buffer.editor.tab_width = self.settings.tab_size;
                 self.recover(&path, &mut buffer);
                 Body::Text(buffer)
             }
@@ -989,14 +935,14 @@ impl Bia {
             }
         };
         let backup = match &body {
-            Body::Text(b) if b.is_dirty() => Some(b.revision),
+            Body::Text(b) if b.is_dirty() => Some(b.revision()),
             _ => None,
         };
         let mut tab = Tab::new(path, body);
         tab.backup = backup;
         self.tabs.insert(tab);
         self.reveal_active();
-        Task::batch([operation::focus(EDITOR_ID), self.restore_scroll()])
+        operation::focus(EDITOR_ID)
     }
 
     /// Puts back unsaved edits to `path` left in `backups/`.
@@ -1056,7 +1002,7 @@ impl Bia {
         if self.tabs.is_empty() {
             self.find = None;
         }
-        self.restore_scroll()
+        Task::none()
     }
 
     fn answer(&mut self, choice: Choice) -> Task<Message> {
@@ -1170,15 +1116,16 @@ impl Bia {
             .enumerate()
             .filter_map(|(i, t)| {
                 let text = t.buffer()?.text();
-                let indent = Indent::for_file(&t.path, text, settings.tab_size);
-                Some((i, self.detect_syntax(&t.path, text), indent))
+                let indent = Indent::for_file(&t.path, &text, settings.tab_size);
+                Some((i, self.detect_syntax(&t.path, &text), indent))
             })
             .collect();
         for (i, syntax, indent) in detected {
             if let Some(buffer) = self.tabs.get_mut(i).and_then(Tab::buffer_mut) {
-                buffer.syntax = syntax;
-                buffer.indent = indent;
-                buffer.auto_close = settings.auto_close;
+                buffer.editor.syntax = syntax;
+                buffer.editor.indent = indent;
+                buffer.editor.auto_close = settings.auto_close;
+                buffer.editor.tab_width = settings.tab_size;
             }
         }
         self.font_size_setting = settings.font_size;
@@ -1219,63 +1166,16 @@ impl Bia {
     }
 
     // ── Editor scrolling ─────────────────────────────────────────────────
-    //
-    // The editor sits in one scroll area with the line numbers, so both move
-    // as one. That scroll area knows nothing about the cursor, hence this.
-
-    fn follow_cursor(&self) -> Task<Message> {
-        let (Some(viewport), Some(buffer)) =
-            (self.editor_viewport, self.tabs.active().and_then(Tab::buffer))
-        else {
-            return Task::none();
-        };
-        if self.is_large(buffer) {
-            return Task::none(); // the editor scrolls itself
-        }
-        let offset = viewport.absolute_offset();
-        let bounds = viewport.bounds();
-        let (x, y) = self.look.geometry.reveal(
-            (buffer.cursor_pos().line, buffer.cursor_columns()),
-            buffer.line_count,
-            (offset.x, offset.y),
-            (bounds.width, bounds.height),
-        );
-        if x.is_none() && y.is_none() {
-            return Task::none();
-        }
-        operation::scroll_to(EDITOR_SCROLL_ID, AbsoluteOffset { x, y })
-    }
 
     /// Moves the cursor to a 0-based line and column of the active file and
-    /// scrolls so that line sits in the middle of the editor.
+    /// has the editor center it.
     fn go_to_line(&mut self, line: usize, column: usize) -> Task<Message> {
-        let geometry = self.look.geometry;
-        let (width, height) =
-            self.editor_viewport.map_or((800.0, 600.0), |v| (v.bounds().width, v.bounds().height));
-        let Some(tab) = self.tabs.active_mut() else { return Task::none() };
-        let Some(buffer) = tab.buffer_mut() else { return Task::none() };
+        self.center_seq += 1;
+        let seq = self.center_seq;
+        let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
         buffer.go_to(line, column);
-        let cursor = (buffer.cursor_pos().line, buffer.cursor_columns());
-        let (x, _) = geometry.reveal(cursor, buffer.line_count, (0.0, 0.0), (width, height));
-        let offset = AbsoluteOffset { x: x.unwrap_or(0.0), y: geometry.centered(cursor.0, height) };
-        tab.scroll = offset;
-        Task::batch([
-            operation::focus(EDITOR_ID),
-            operation::scroll_to(
-                EDITOR_SCROLL_ID,
-                AbsoluteOffset { x: Some(offset.x), y: Some(offset.y) },
-            ),
-        ])
-    }
-
-    /// Every tab shares one scroll area, so switching tabs restores the
-    /// position that tab was left at.
-    fn restore_scroll(&self) -> Task<Message> {
-        let offset = self.tabs.active().map(|t| t.scroll).unwrap_or_default();
-        operation::scroll_to(
-            EDITOR_SCROLL_ID,
-            AbsoluteOffset { x: Some(offset.x), y: Some(offset.y) },
-        )
+        buffer.center = seq;
+        operation::focus(EDITOR_ID)
     }
 
     // ── Explorer actions ─────────────────────────────────────────────────
@@ -1385,12 +1285,12 @@ impl Bia {
                         backup::remove(&paths::backups_dir(), &from.join(rest));
                     }
                     let (path, text) = match tab.buffer() {
-                        Some(b) => (tab.path.clone(), b.text().to_owned()),
+                        Some(b) => (tab.path.clone(), b.text()),
                         None => continue,
                     };
                     let syntax = self.detect_syntax(&path, &text);
                     if let Some(buffer) = self.tabs.get_mut(i).and_then(Tab::buffer_mut) {
-                        buffer.syntax = syntax;
+                        buffer.editor.syntax = syntax;
                     }
                 }
                 self.selected = Some(to);
@@ -1424,7 +1324,7 @@ impl Bia {
         let Some(find) = &mut self.find else { return };
         let Some(buffer) = self.tabs.active().and_then(Tab::buffer) else { return };
         let (matches, error) = match find.matcher() {
-            Ok(m) => (m.find_all(buffer.text()), None),
+            Ok(m) => (m.find_all(&buffer.text()), None),
             Err(QueryError::Empty) => (Vec::new(), None),
             Err(QueryError::Invalid(e)) => (Vec::new(), Some(e)),
         };
@@ -1457,8 +1357,8 @@ impl Bia {
         }
         match (current, to_editor) {
             (None, _) => Task::none(),
-            (Some(_), true) => Task::batch([operation::focus(EDITOR_ID), self.follow_cursor()]),
-            (Some(_), false) => self.follow_cursor(),
+            (Some(_), true) => operation::focus(EDITOR_ID),
+            (Some(_), false) => Task::none(),
         }
     }
 
@@ -1472,7 +1372,7 @@ impl Bia {
         if let (Some(range), Some(matcher), Some(buffer)) =
             (target, matcher, self.active_buffer_mut())
             && buffer.selection_range().as_ref() == Some(&range)
-            && let Some(new) = matcher.replacement_at(buffer.text(), range.clone(), &with)
+            && let Some(new) = matcher.replacement_at(&buffer.text(), range.clone(), &with)
         {
             buffer.replace_range(range, &new);
             self.refresh_find();
@@ -1485,7 +1385,7 @@ impl Bia {
         let with = find.replace.clone().unwrap_or_default();
         let Ok(matcher) = find.matcher() else { return Task::none() };
         let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
-        let edits = matcher.replacements(buffer.text(), &with);
+        let edits = matcher.replacements(&buffer.text(), &with);
         if edits.is_empty() {
             return Task::none();
         }
@@ -1496,7 +1396,7 @@ impl Bia {
         }
         let text = self.look.i18n.f("find.replaced", &[("count", &edits.len())]);
         self.info(text);
-        self.follow_cursor()
+        Task::none()
     }
 
     // ── Find in files ────────────────────────────────────────────────────
@@ -1515,7 +1415,7 @@ impl Bia {
             .tabs
             .active()
             .and_then(Tab::buffer)
-            .and_then(|b| Some(b.text()[b.selection_range()?].to_owned()))
+            .and_then(|b| Some(b.editor.slice(b.selection_range()?)))
             .filter(|s| !s.contains('\n'))
         {
             self.project_search.query = selected;
@@ -1532,9 +1432,7 @@ impl Bia {
         let open: HashMap<PathBuf, String> = self
             .tabs
             .iter()
-            .filter_map(|t| {
-                t.buffer().filter(|b| b.is_dirty()).map(|b| (t.path.clone(), b.text().to_owned()))
-            })
+            .filter_map(|t| t.buffer().filter(|b| b.is_dirty()).map(|b| (t.path.clone(), b.text())))
             .collect();
         let hidden = self.settings.hidden.clone();
         let search = &mut self.project_search;

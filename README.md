@@ -57,7 +57,9 @@ The install commands above don't trigger this warning.
 - Find and replace, with match case, whole word and regex
 - Find in files, skipping what `.gitignore` lists
 - Open a file by name, go to a line
+- Several cursors, in every command
 - Comment, move, duplicate and delete lines; brackets and quotes close themselves
+- Files of any length open at once, line numbers included
 - Indentation that follows each file: tabs or spaces, and how many
 - Live Markdown preview
 - Dark and light themes, or your own in JSON ([how](docs/THEMES.md))
@@ -87,6 +89,10 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `Shift+Alt+↑` / `Shift+Alt+↓` | Duplicate lines |
 | `Ctrl+Shift+K` | Delete lines |
 | `Ctrl+L` | Select line (again for the next) |
+| `Ctrl+D` | Select the next occurrence (adds a cursor) |
+| `Ctrl+Shift+L` | Select every occurrence |
+| `Ctrl+Alt+↑` / `Ctrl+Alt+↓` | Add a cursor above / below |
+| `Alt+click` | Add or remove a cursor |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+Shift+V` | Markdown preview |
 | `Ctrl+B` | Toggle sidebar |
@@ -112,7 +118,8 @@ On a Mac, use `Cmd` and `Option`. Replace is `Cmd+Alt+F`.
   "theme": "noite",
   "language": "auto",
   "hidden": [".git", "node_modules", "target"],
-  "auto_close": true
+  "auto_close": true,
+  "soft_wrap": false
 }
 ```
 
@@ -121,8 +128,9 @@ and Fira Code, but any installed font works.
 `theme` is `noite`, `dia` or one of yours. `language` is `auto`, `en` or `pt-BR`.
 `hidden` lists names the file tree skips.
 `auto_close` types the closing bracket or quote for you.
-`tab_size` is the indent width for files with no indentation yet. Files that have
-some keep their own.
+`soft_wrap` wraps long lines at the edge of the window.
+`tab_size` is how wide a tab looks, and the indent width for files with no
+indentation yet. Files that have some keep their own.
 
 ## License
 

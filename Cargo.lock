@@ -272,7 +272,9 @@ dependencies = [
  "bia-core",
  "iced",
  "rfd",
+ "ropey",
  "trash",
+ "unicode-segmentation",
  "winresource",
 ]
 

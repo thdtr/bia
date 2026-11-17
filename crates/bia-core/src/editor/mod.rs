@@ -4,11 +4,13 @@
 //! calls and draws what [`Editor`] holds. Offsets are bytes into the text,
 //! always on a char boundary. Every command works with several cursors.
 
+mod display;
 mod motion;
 mod selection;
 mod transaction;
 mod undo;
 
+pub use display::DisplayMap;
 pub use motion::{char_width, column_for_display, display_column, next_grapheme, prev_grapheme};
 pub use selection::{Selection, Selections};
 pub use transaction::{Assoc, Edit, Transaction};
@@ -78,6 +80,20 @@ pub struct Editor {
     copied_lines: Option<String>,
     /// Ctrl+D started from a cursor in a word, so it matches whole words.
     next_whole_word: bool,
+    /// Recent changes: the revision each made and the first line it
+    /// touched, so caches (highlighting) redo only what changed.
+    changes: Vec<(u64, usize)>,
+}
+
+/// Recent changes kept in [`Editor::first_changed_line`]'s log.
+const CHANGE_LOG: usize = 256;
+
+/// What a mouse drag selects by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unit {
+    Char,
+    Word,
+    Line,
 }
 
 impl Editor {
@@ -95,7 +111,95 @@ impl Editor {
             tab_width: 4,
             copied_lines: None,
             next_whole_word: false,
+            changes: Vec::new(),
         }
+    }
+
+    /// The first line that may differ from the text at revision `since`,
+    /// or `None` if nothing changed. Too old a revision gives line 0.
+    pub fn first_changed_line(&self, since: u64) -> Option<usize> {
+        if since >= self.revision {
+            return None;
+        }
+        let covered = self.changes.first().is_some_and(|&(rev, _)| rev <= since + 1);
+        if !covered {
+            return Some(0);
+        }
+        self.changes.iter().filter(|&&(rev, _)| rev > since).map(|&(_, line)| line).min()
+    }
+
+    fn changed(&mut self, from: usize) {
+        self.revision += 1;
+        let line = self.rope.byte_to_line(from.min(self.len()));
+        self.changes.push((self.revision, line));
+        if self.changes.len() > CHANGE_LOG {
+            self.changes.drain(..self.changes.len() - CHANGE_LOG);
+        }
+    }
+
+    /// A mouse drag that started on `origin` (a point, word or line) and
+    /// is now at `at`: selects from one to the other, by `unit`.
+    pub fn drag(&mut self, origin: Range<usize>, at: usize, unit: Unit) {
+        let at = at.min(self.len());
+        let target = match unit {
+            Unit::Char => at..at,
+            Unit::Word => self.word_range(at),
+            Unit::Line => self.line_range(at),
+        };
+        let selection = if target.start < origin.start {
+            Selection::new(origin.end, target.start)
+        } else {
+            Selection::new(origin.start, target.end.max(origin.end))
+        };
+        let primary = self.selections.primary_index();
+        let mut list = self.selections.as_slice().to_vec();
+        list[primary] = selection;
+        self.selections = Selections::new(list, primary).clamped(self.len());
+    }
+
+    /// The bracket matching the one just before or just after `at`, as the
+    /// offsets of both. Strings and comments aren't told apart.
+    pub fn matching_bracket(&self, at: usize) -> Option<(usize, usize)> {
+        const LIMIT: usize = 20_000;
+        let pairs = [('(', ')'), ('[', ']'), ('{', '}')];
+        let candidates = [
+            motion::char_after(&self.rope, at).map(|c| (at, c)),
+            motion::char_before(&self.rope, at).map(|c| (at - c.len_utf8(), c)),
+        ];
+        for (pos, c) in candidates.into_iter().flatten() {
+            if let Some(&(open, close)) = pairs.iter().find(|(o, _)| *o == c) {
+                let mut depth = 0usize;
+                let mut offset = pos;
+                for ch in self.rope.byte_slice(pos..).chars().take(LIMIT) {
+                    if ch == open {
+                        depth += 1;
+                    } else if ch == close {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some((pos, offset));
+                        }
+                    }
+                    offset += ch.len_utf8();
+                }
+            } else if let Some(&(open, close)) = pairs.iter().find(|(_, cl)| *cl == c) {
+                let mut depth = 0usize;
+                let mut chars = self.rope.chars_at(self.rope.byte_to_char(pos + 1));
+                let mut offset = pos + 1;
+                for _ in 0..LIMIT {
+                    let Some(ch) = chars.prev() else { break };
+                    offset -= ch.len_utf8();
+                    if ch == close {
+                        depth += 1;
+                    } else if ch == open {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some((offset, pos));
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     // ── Reading ──────────────────────────────────────────────────────────
@@ -416,8 +520,8 @@ impl Editor {
 
     pub fn undo(&mut self) -> bool {
         match self.undo.undo(&mut self.rope) {
-            Some(selections) => {
-                self.revision += 1;
+            Some((selections, from)) => {
+                self.changed(from);
                 self.selections = selections.clamped(self.len());
                 true
             }
@@ -427,8 +531,8 @@ impl Editor {
 
     pub fn redo(&mut self) -> bool {
         match self.undo.redo(&mut self.rope) {
-            Some(selections) => {
-                self.revision += 1;
+            Some((selections, from)) => {
+                self.changed(from);
                 self.selections = selections.clamped(self.len());
                 true
             }
@@ -459,7 +563,7 @@ impl Editor {
         let before = self.selections.clone();
         let inverse = tx.invert(&self.rope);
         tx.apply(&mut self.rope);
-        self.revision += 1;
+        self.changed(tx.edits()[0].range.start);
         let next = after(self, &tx).clamped(self.len());
         self.undo.record(tx, inverse, &before, &next, kind, Instant::now());
         self.selections = next;

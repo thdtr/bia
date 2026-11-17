@@ -66,7 +66,7 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
             let note = match app.tabs.active().and_then(Tab::buffer) {
                 Some(buffer) => t.f(
                     "palette.line_hint",
-                    &[("line", &buffer.line_col().0), ("total", &buffer.line_count)],
+                    &[("line", &buffer.line_col().0), ("total", &buffer.editor.line_count())],
                 ),
                 None => String::new(),
             };

@@ -13,7 +13,6 @@
 //! ```
 
 mod explorer;
-pub mod layout;
 mod palette;
 mod search;
 pub mod style;
@@ -189,13 +188,16 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
             );
         }
         let (line, col) = buffer.line_col();
-        let syntax =
-            if buffer.syntax == "Plain Text" { t.t("status.plain_text") } else { &buffer.syntax };
+        let syntax = if buffer.editor.syntax == "Plain Text" {
+            t.t("status.plain_text")
+        } else {
+            &buffer.editor.syntax
+        };
         let encoding = if buffer.bom { "UTF-8 BOM" } else { "UTF-8" };
-        let indent = if buffer.indent.tabs {
+        let indent = if buffer.editor.indent.tabs {
             t.t("status.tabs").to_owned()
         } else {
-            t.f("status.spaces", &[("width", &buffer.indent.width)])
+            t.f("status.spaces", &[("width", &buffer.editor.indent.width)])
         };
         let eol = buffer.line_ending.label();
         let eol = if buffer.mixed_endings {

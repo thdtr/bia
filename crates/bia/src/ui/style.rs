@@ -7,7 +7,7 @@
 //!   the open file in the explorer, the caret's selection, the hummingbird.
 
 use bia_core::Rgba;
-use iced::widget::{button, container, rule, scrollable, text_editor, text_input};
+use iced::widget::{button, container, rule, scrollable, text_input};
 use iced::{Background, Border, Color, Shadow, Theme, border};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -151,16 +151,6 @@ pub fn input(c: Colors) -> impl Fn(&Theme, text_input::Status) -> text_input::St
             radius: 4.0.into(),
         },
         icon: c.muted,
-        placeholder: c.muted,
-        value: c.text,
-        selection: c.selection,
-    }
-}
-
-pub fn editor(c: Colors) -> impl Fn(&Theme, text_editor::Status) -> text_editor::Style {
-    move |_, _| text_editor::Style {
-        background: Background::Color(c.background),
-        border: Border::default(),
         placeholder: c.muted,
         value: c.text,
         selection: c.selection,

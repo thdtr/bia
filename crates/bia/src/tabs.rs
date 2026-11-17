@@ -6,7 +6,7 @@
 
 use crate::buffer::Buffer;
 use bia_core::{fs_ops, tree};
-use iced::widget::scrollable::AbsoluteOffset;
+use iced::Vector;
 use std::path::{Path, PathBuf};
 
 // A handful of tabs at most, so boxing the large variant buys nothing.
@@ -21,14 +21,14 @@ pub struct Tab {
     pub path: PathBuf,
     pub body: Body,
     /// Where the editor was scrolled to, restored when the tab comes back.
-    pub scroll: AbsoluteOffset,
+    pub scroll: Vector,
     /// The buffer revision last written to `backups/`, if there's a backup.
     pub backup: Option<u64>,
 }
 
 impl Tab {
     pub fn new(path: PathBuf, body: Body) -> Self {
-        Self { path, body, scroll: AbsoluteOffset::default(), backup: None }
+        Self { path, body, scroll: Vector::ZERO, backup: None }
     }
 
     pub fn name(&self) -> String {

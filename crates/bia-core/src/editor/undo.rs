@@ -38,6 +38,19 @@ struct Group {
     state_after: u64,
 }
 
+impl Group {
+    /// No edit in the group touches text before this offset, in any of the
+    /// texts along the way, so the text before it is the same throughout.
+    fn first_offset(&self) -> usize {
+        self.entries
+            .iter()
+            .flat_map(|e| e.tx.edits().iter().chain(e.inverse.edits()))
+            .map(|e| e.range.start)
+            .min()
+            .unwrap_or(0)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Undo {
     done: Vec<Group>,
@@ -101,9 +114,11 @@ impl Undo {
         self.last = None;
     }
 
-    /// Takes `rope` back one step. Returns the selections to restore.
-    pub fn undo(&mut self, rope: &mut Rope) -> Option<Selections> {
+    /// Takes `rope` back one step. Returns the selections to restore and
+    /// an offset before which nothing changed.
+    pub fn undo(&mut self, rope: &mut Rope) -> Option<(Selections, usize)> {
         let group = self.done.pop()?;
+        let from = group.first_offset();
         for e in group.entries.iter().rev() {
             e.inverse.apply(rope);
         }
@@ -111,11 +126,12 @@ impl Undo {
         self.last = None;
         let selections = group.before.clone();
         self.undone.push(group);
-        Some(selections)
+        Some((selections, from))
     }
 
-    pub fn redo(&mut self, rope: &mut Rope) -> Option<Selections> {
+    pub fn redo(&mut self, rope: &mut Rope) -> Option<(Selections, usize)> {
         let group = self.undone.pop()?;
+        let from = group.first_offset();
         for e in &group.entries {
             e.tx.apply(rope);
         }
@@ -123,7 +139,7 @@ impl Undo {
         self.last = None;
         let selections = group.after.clone();
         self.done.push(group);
-        Some(selections)
+        Some((selections, from))
     }
 }
 

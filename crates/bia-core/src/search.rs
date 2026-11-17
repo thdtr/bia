@@ -173,9 +173,10 @@ fn read_text(path: &std::path::Path) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
-/// Longest preview, in characters, and how much comes before the match.
+/// Longest preview, in characters, and how much comes before the match:
+/// little, since a sidebar row shows about 30 characters.
 const PREVIEW: usize = 160;
-const PREVIEW_BEFORE: usize = 40;
+const PREVIEW_BEFORE: usize = 12;
 
 /// Turns byte ranges (sorted) into hits. Walks the text once.
 fn to_hits(text: &str, ranges: &[Range<usize>]) -> Vec<Hit> {

@@ -22,9 +22,25 @@ Notable changes to BIA are listed here. The format is based on
 - Unsaved edits are kept in a backup until you save or discard them. After a crash,
   BIA opens the file with them.
 - The welcome screen lists recent folders.
+- Several cursors: `Ctrl+D` adds the next occurrence, `Ctrl+Shift+L` selects them
+  all, `Ctrl+Alt+↑`/`↓` adds one above or below, Alt+click adds or removes one.
+  Every command works with all of them.
+- Find lights up every match, not just the current one.
+- The current line and the bracket pair at the cursor are highlighted.
+- Double click selects a word, triple click a line, and dragging after either goes
+  by words or lines. Clicking a line number selects the line.
+- `Ctrl+C` and `Ctrl+X` with nothing selected take the whole line, and pasting it
+  puts it above the cursor's line.
+- `Ctrl+Backspace` and `Ctrl+Delete` delete a word.
+- `"soft_wrap": true` wraps long lines at the edge of the window.
 
 ### Changed
 
+- BIA draws the editor itself instead of using iced's text editor. Files open at
+  once whatever their length, with line numbers (they used to be turned off past
+  10,000 lines), and typing no longer compares the whole text on every key.
+- Tabs are drawn `tab_size` columns wide instead of always 8.
+- Enter in the find field goes to the next match and stays in the field.
 - Open file by name (`Ctrl+P`) skips what `.gitignore` lists.
 - MIT is now the only license. Versions up to 0.2.0 remain available under MIT or
   Apache 2.0.

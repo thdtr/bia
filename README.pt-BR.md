@@ -59,7 +59,9 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Buscar e substituir, com maiúsculas, palavra inteira e regex
 - Busca em todos os arquivos, pulando o que está no `.gitignore`
 - Abrir arquivo pelo nome, ir para uma linha
+- Vários cursores, em todos os comandos
 - Comentar, mover, duplicar e apagar linhas; parênteses e aspas fecham sozinhos
+- Arquivos de qualquer tamanho abrem na hora, com número de linha
 - Indentação que segue cada arquivo: tabs ou espaços, e quantos
 - Prévia de Markdown ao vivo
 - Temas claro e escuro, ou o seu em JSON ([veja como](docs/THEMES.md))
@@ -89,6 +91,10 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `Shift+Alt+↑` / `Shift+Alt+↓` | Duplicar linhas |
 | `Ctrl+Shift+K` | Apagar linhas |
 | `Ctrl+L` | Selecionar linha (de novo para a próxima) |
+| `Ctrl+D` | Selecionar a próxima ocorrência (mais um cursor) |
+| `Ctrl+Shift+L` | Selecionar todas as ocorrências |
+| `Ctrl+Alt+↑` / `Ctrl+Alt+↓` | Cursor a mais acima / abaixo |
+| `Alt+clique` | Pôr ou tirar um cursor |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Desfazer / refazer |
 | `Ctrl+Shift+V` | Prévia de Markdown |
 | `Ctrl+B` | Mostrar ou esconder a barra lateral |
@@ -114,7 +120,8 @@ No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`.
   "theme": "noite",
   "language": "auto",
   "hidden": [".git", "node_modules", "target"],
-  "auto_close": true
+  "auto_close": true,
+  "soft_wrap": false
 }
 ```
 
@@ -122,8 +129,9 @@ No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`.
 fontes Fira Sans e Fira Code, mas aceita qualquer fonte instalada. `theme` pode ser
 `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou `pt-BR`. `hidden` lista os nomes que a árvore não mostra.
 `auto_close` fecha parênteses, colchetes, chaves e aspas por você.
-`tab_size` é a largura da indentação em arquivos que ainda não têm nenhuma. Os que já
-têm mantêm a deles.
+`soft_wrap` quebra as linhas longas na borda da janela.
+`tab_size` é a largura de um tab na tela e a da indentação em arquivos que ainda não
+têm nenhuma. Os que já têm mantêm a deles.
 
 ## Licença
 

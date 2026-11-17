@@ -52,7 +52,12 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
         (None, true, _) => hint(app, t.t("search.running")),
         (None, false, Some(found)) if found.hits == 0 => hint(app, t.t("find.none")),
         (None, false, Some(found)) => {
-            let key = if found.truncated { "search.count_truncated" } else { "search.count" };
+            let key = match (found.truncated, found.files.len(), found.hits) {
+                (true, ..) => "search.count_truncated",
+                (false, _, 1) => "search.count_one",
+                (false, 1, _) => "search.count_one_file",
+                _ => "search.count",
+            };
             hint(app, t.f(key, &[("hits", &found.hits), ("files", &found.files.len())]))
         }
         (None, false, None) => hint(app, t.t("search.hint")),

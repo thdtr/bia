@@ -1,19 +1,18 @@
 //! Tabs, the find bar, the editor and the Markdown preview.
 
-use super::layout::{EDITOR_PADDING, GUTTER_PADDING};
 use super::{hint, label, logo, option_toggle, style, tip};
-use crate::app::{Bia, EDITOR_ID, EDITOR_SCROLL_ID, FIND_ID, FindOption, Message, REPLACE_ID};
+use crate::app::{Bia, EDITOR_ID, FIND_ID, FindOption, Message, REPLACE_ID};
 use crate::buffer::Buffer;
-use crate::highlighter::Highlighter;
+use crate::code_view::CodeView;
 use crate::keys;
 use crate::tabs::{Body, Tab};
 use crate::ui::style::Colors;
-use iced::widget::text::{self, LineHeight, Span, Wrapping};
 use iced::widget::{
-    Row, button, center, column, container, markdown, mouse_area, responsive, rich_text, row, rule,
-    scrollable, space, span, text_editor, text_input, tooltip,
+    Row, button, center, column, container, markdown, mouse_area, rich_text, row, rule, scrollable,
+    space, text_input, tooltip,
 };
 use iced::{Alignment, Background, Border, Element, Fill, FillPortion, Length, Padding, Pixels};
+use std::hash::{Hash, Hasher};
 
 pub fn view(app: &Bia) -> Element<'_, Message> {
     let c = app.look.colors;
@@ -198,11 +197,26 @@ fn find_bar(app: &Bia) -> Element<'_, Message> {
 
 fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a, Message> {
     let c = app.look.colors;
-    let code: Element<'a, Message> = if app.is_large(buffer) {
-        large_file_view(app, buffer)
-    } else {
-        responsive(move |size| code_view(app, buffer, size.width, size.height)).into()
+    let (matches, current): (&[std::ops::Range<usize>], _) = match &app.find {
+        Some(find) => (&find.matches, find.current),
+        None => (&[], None),
     };
+    let mut hasher = std::hash::DefaultHasher::new();
+    tab.path.hash(&mut hasher);
+    let code: Element<'a, Message> = CodeView::new(
+        EDITOR_ID,
+        &buffer.editor,
+        &buffer.highlights,
+        app.syntax_context(),
+        c,
+        Message::Input,
+        Message::EditorScrolled,
+    )
+    .font(app.look.editor_font, app.settings.font_size, app.settings.line_height)
+    .matches(matches, current)
+    .wrap(app.settings.soft_wrap)
+    .scroll(hasher.finish(), tab.scroll, buffer.center)
+    .into();
 
     match (&buffer.markdown, app.is_markdown(tab)) {
         (Some(md), true) => {
@@ -220,94 +234,6 @@ fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a
         }
         _ => code,
     }
-}
-
-/// Very long files skip the gutter: the editor then lays out only the lines
-/// on screen and scrolls itself, which keeps them fast to open and edit.
-fn large_file_view<'a>(app: &'a Bia, buffer: &'a Buffer) -> Element<'a, Message> {
-    text_editor(&buffer.content)
-        .id(EDITOR_ID)
-        .on_action(Message::Edit)
-        .key_binding(keys::editor_binding)
-        .font(app.look.editor_font)
-        .size(app.settings.font_size)
-        .line_height(LineHeight::Relative(app.settings.line_height))
-        .padding(EDITOR_PADDING)
-        .height(Fill)
-        .wrapping(Wrapping::WordOrGlyph)
-        .highlight_with::<Highlighter>(app.highlighter_settings(buffer), |format, _| *format)
-        .style(style::editor(app.look.colors))
-        .into()
-}
-
-/// Line numbers and text side by side in one scroll area, so they can never
-/// drift apart. Lines don't wrap; long ones scroll sideways.
-fn code_view<'a>(
-    app: &'a Bia,
-    buffer: &'a Buffer,
-    width: f32,
-    height: f32,
-) -> Element<'a, Message> {
-    let c = app.look.colors;
-    let line_height = LineHeight::Relative(app.settings.line_height);
-    let geometry = app.look.geometry;
-    let gutter_width = geometry.gutter_width(buffer.line_count);
-
-    // The cursor's line number is drawn in the text color, the rest muted.
-    // Clamped so a mismatch between the widget and the gutter can only
-    // misplace the highlight, never crash.
-    let current = buffer.cursor_pos().line + 1;
-    let len = buffer.gutter.len();
-    let start = bia_core::text::gutter_offset(current).min(len);
-    let end = bia_core::text::gutter_offset(current + 1).min(len).max(start);
-    let numbers: [Span<'a, (), iced::Font>; 3] = [
-        span(&buffer.gutter[..start]).color(c.muted),
-        span(&buffer.gutter[start..end]).color(c.text),
-        span(&buffer.gutter[end..]).color(c.muted),
-    ];
-    let gutter = container(
-        rich_text(numbers)
-            .font(app.look.editor_font)
-            .size(app.settings.font_size)
-            .line_height(line_height)
-            .align_x(text::Alignment::Right)
-            .width(Fill),
-    )
-    .width(Length::Fixed(gutter_width))
-    .padding(iced::Padding {
-        top: EDITOR_PADDING.top,
-        bottom: EDITOR_PADDING.bottom,
-        left: GUTTER_PADDING.0,
-        right: GUTTER_PADDING.1,
-    });
-
-    let text_width = geometry.text_width(buffer.max_columns);
-    let editor = text_editor(&buffer.content)
-        .id(EDITOR_ID)
-        .on_action(Message::Edit)
-        .key_binding(keys::editor_binding)
-        .font(app.look.editor_font)
-        .size(app.settings.font_size)
-        .line_height(line_height)
-        .padding(EDITOR_PADDING)
-        .width(text_width.max(width - gutter_width))
-        .height(Length::Shrink)
-        // iced adds the padding on top of min_height, so a file that fits
-        // would otherwise still overflow by the padding and show a scrollbar.
-        .min_height((height - EDITOR_PADDING.y()).max(0.0))
-        .wrapping(Wrapping::None)
-        .highlight_with::<Highlighter>(app.highlighter_settings(buffer), |format, _| *format)
-        .style(style::editor(c));
-
-    let bar = scrollable::Scrollbar::default().width(8).scroller_width(6).margin(1);
-    scrollable(row![gutter, editor])
-        .id(EDITOR_SCROLL_ID)
-        .direction(scrollable::Direction::Both { vertical: bar, horizontal: bar })
-        .on_scroll(Message::EditorScrolled)
-        .width(Fill)
-        .height(Fill)
-        .style(style::scroll(c))
-        .into()
 }
 
 fn markdown_view<'a>(app: &'a Bia, md: &'a markdown::Content) -> Element<'a, Message> {

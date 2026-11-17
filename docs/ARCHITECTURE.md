@@ -5,22 +5,23 @@ BIA is two Rust crates, a folder of assets and two scripts that generate some of
 ```text
 bia/
 ├── crates/
-│   ├── bia-core/        no GUI: settings, themes, i18n, tree, documents, history,
-│   │   │                languages, file operations (fs_ops), indentation, fuzzy match,
-│   │   │                search, editing rules (comments, pairs), backups, state
+│   ├── bia-core/        no GUI: settings, themes, i18n, tree, documents, languages,
+│   │   │                file operations (fs_ops), indentation, fuzzy match, search,
+│   │   │                editing rules (comments, pairs), backups, state
+│   │   ├── src/editor/  the text model: rope, cursors, commands, undo, display rows
 │   │   └── tests/sealed.rs   fails the build if network code appears
 │   └── bia/             the iced application
 │       ├── build.rs        embeds the icon in bia.exe (Windows only)
 │       └── src/
 │           ├── app.rs          state + update loop; orchestrates the modules below
 │           ├── tabs.rs         open files, the active one, rename/delete bookkeeping
-│           ├── buffer.rs       one open file: widget content, undo, save metadata
-│           ├── highlighter.rs  syntect → iced incremental highlighting bridge
+│           ├── buffer.rs       one open file: its editor, save metadata, caches
+│           ├── code_view/      the editor widget: draws an editor, sends input
+│           ├── syntax.rs       syntect highlighting, line by line, cached
 │           ├── icons.rs        which icon each file gets (name, then extension)
 │           ├── keys.rs         every keyboard shortcut, in one table
 │           ├── fonts.rs        bundled fonts; font names from settings → iced fonts
 │           └── ui/
-│               ├── layout.rs   editor geometry shared by the view and scrolling
 │               ├── style.rs    every color decision
 │               └── …           pure view functions
 ├── assets/
@@ -37,9 +38,9 @@ bia/
 └── deny.toml            the dependency-level half of the "sealed" guarantee
 ```
 
-Anything that can be tested without a window goes in `bia-core` (file I/O, undo,
-text math, file operations) or in a plain module of the app (`tabs.rs`,
-`ui/layout.rs`, `icons.rs`, `keys.rs`). All of these have unit tests. `app.rs` just
+Anything that can be tested without a window goes in `bia-core` (file I/O, the
+editor model, file operations) or in a plain module of the app (`tabs.rs`,
+`syntax.rs`, `icons.rs`, `keys.rs`). All of these have unit tests. `app.rs` just
 connects them to iced.
 
 ## Guidelines
@@ -58,7 +59,9 @@ connects them to iced.
 
 | Need | Crate | Why |
 |---|---|---|
-| GUI | **[iced](https://iced.rs) 0.14** | Written in Rust, runs on Linux, macOS and Windows (GPU rendering with a CPU fallback), and comes with a multi-line text editor that supports incremental highlighting, plus a Markdown widget. We also looked at GPUI (used by Zed and GRAM), which is faster but has no stable API and no editor outside Zed; egui, which redraws everything every frame; and Tauri, which needs a browser engine. |
+| GUI | **[iced](https://iced.rs) 0.14** | Written in Rust, runs on Linux, macOS and Windows (GPU rendering with a CPU fallback), has a Markdown widget, and lets a custom widget lay out and draw text itself, which BIA's editor does. We also looked at GPUI (used by Zed and GRAM), which is faster but has no stable API and no editor outside Zed; egui, which redraws everything every frame; and Tauri, which needs a browser engine. |
+| Text of open files | ropey | A rope: an edit costs the same anywhere in a 16 MB file. Built without `unicode_lines`, so only `\n` breaks a line. |
+| Graphemes, widths | unicode-segmentation, unicode-width | The cursor steps over `é` or 👍🏽 at once, and CJK characters take two columns. |
 | Text rendering | cosmic-text (through iced) | Unicode, ligatures, emoji and font fallback. |
 | Fonts | **Fira Sans** and **Fira Code**, bundled | One family, so BIA looks the same on every machine. Similar in style to GRAM's defaults. SIL Open Font License, about 2.5 MB of the binary. |
 | Syntax highlighting | **syntect** + **two-face** | Uses Sublime Text grammars. About 200 come built in (the set `bat` maintains), and users can add more by dropping a `.sublime-syntax` file in a folder. Tree-sitter grammars are C code that has to be compiled in, so they don't allow that. syntect is built with `regex-fancy`, so there's no C toolchain involved. |
@@ -89,13 +92,22 @@ keyboard / mouse ──► iced ──► Message ──► Bia::update ──�
                        ui::view(&Bia) ◄──────────────┘
 ```
 
-* **Editing.** The `text_editor` widget sends `Action`s. `Buffer::perform` applies
-  them, compares the text before and after (`history::Change::between`) and stores
-  only the part that changed. Undo applies the reverse change through the widget, so
-  the scroll position and highlighting stay as they were.
-* **Highlighting.** `highlighter.rs` connects syntect to iced's `Highlighter` trait and
-  saves the parser state every 64 lines. After an edit on line 9,000, parsing restarts
-  at line 8,960 instead of line 0.
+* **Editing.** `code_view` turns keys and the mouse into `Input` messages; it never
+  changes the text itself. `Buffer::input` hands them to `bia_core::editor::Editor`,
+  where every command runs at every cursor as one transaction (edits sorted, none
+  overlapping). Undo keeps the inverse transactions and the selections, grouped by
+  word, and knows when the text is back to how it was saved.
+* **Drawing.** The widget lays out only the rows on screen, one `Paragraph` each,
+  cached by content. `DisplayMap` turns lines into rows: one per line, or several when
+  `soft_wrap` is on. Tabs become spaces up to the next stop of `tab_size`.
+  Selections, the current line, search matches and the bracket pair are rectangles
+  under the text; cursors are drawn over it. The widget scrolls by itself, follows
+  the cursor and remembers each tab's place.
+* **Highlighting.** `syntax.rs` keeps syntect's state every 16 lines and the styles of
+  lines already drawn. An edit drops what comes after the first changed line (the
+  editor logs it). Drawing parses for 12 ms at most per frame; until it catches up,
+  lines on screen are parsed from their own start. A jump more than 5,000 lines past
+  what was parsed starts parsing 200 lines above the screen instead.
 * **Saving.** `document::write_atomic` writes a temporary file next to the original,
   with the same permissions, flushes it to disk and renames it over the original. It
   follows symlinks. Files with more than one hard link, and files in folders where BIA
@@ -112,9 +124,10 @@ few things an editor can't really do without:
 
 | Feature | Why |
 |---|---|
-| Undo and redo, grouped by word | iced's editor doesn't have undo. |
+| Undo and redo, grouped by word | Restores the selections too. |
+| Several cursors | `Ctrl+D`, `Ctrl+Shift+L`, `Ctrl+Alt+↑/↓`, Alt+click. Every command works with all of them. |
 | Find and replace (`Ctrl+F`, `Ctrl+H`) | You need to search inside a file, and renaming by hand is slow. |
-| Indentation that follows the file | iced's editor always indents with 8 spaces, and Enter goes back to column 0. BIA detects tabs or spaces and the width, keeps the indent on Enter and adds a level after `{`, `[` or `(`. |
+| Indentation that follows the file | BIA detects tabs or spaces and the width, keeps the indent on Enter and adds a level after `{`, `[` or `(`. |
 | Open file by name (`Ctrl+P`) | In a real project, the tree alone is too slow. |
 | Go to line (`Ctrl+G`, `bia file:line`) | Compilers, stack traces and CI logs point to lines. |
 | Tabs | You usually work on more than one file. |
@@ -133,25 +146,17 @@ few things an editor can't really do without:
 
 ## Known limitations
 
-* **Long lines don't wrap.** The line numbers and the text share one scroll area so
-  they always line up, and iced's editor only supports that without wrapping. Long
-  lines scroll sideways.
-* **Very long files are slow to open.** iced lays out the whole file up front: about
-  0.3 s for 3,000 lines and 0.8 s for 10,000. Files over 10,000 lines open without line
-  numbers, which keeps scrolling and typing fast (`LARGE_FILE_LINES` in
-  `ui/layout.rs`).
+* **Up and Down move by line, not by row.** With `soft_wrap`, a wrapped line is one
+  step.
+* **Wrapping a very long file costs a pass over it per edit.** Without `soft_wrap`,
+  nothing is measured that isn't on screen.
 * **Mixed line endings aren't kept.** A file that mixes LF and CRLF is saved with the
   more common one. The status bar says so before you save.
-* **Bare CR line breaks aren't supported.** The editor widget treats `\r` as a line
-  break and BIA's copy of the text doesn't, so these files aren't opened.
-* **Tabs are drawn 8 columns wide.** iced doesn't let BIA change that. `tab_size` only
-  sets what the Tab key inserts.
-* **Only the current find match is highlighted.** iced's editor can color text but
-  not draw behind it, so the others only show in the count.
+* **Bare CR line breaks aren't supported.** These files aren't opened.
 * **Find in files doesn't replace yet.** Results open the file with the match
   selected, where `Ctrl+H` works.
-* **Each keystroke compares the whole text.** That's a byte comparison of at most
-  16 MB, which you won't notice, and it keeps the undo code simple.
+* **Highlighting far into a long file can be wrong** inside a comment or string that
+  started more than 5,000 lines above (see *Highlighting* above).
 
 ## Not in BIA yet
 

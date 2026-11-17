@@ -44,6 +44,8 @@
   "search.hint": "Press Enter to search. Files your .gitignore lists are skipped.",
   "search.running": "Searching…",
   "search.count": "{hits} results in {files} files",
+  "search.count_one": "1 result",
+  "search.count_one_file": "{hits} results in 1 file",
   "search.count_truncated": "First {hits} results, in {files} files",
   "status.line_col": "Ln {line}, Col {col}",
   "status.preview": "Preview",

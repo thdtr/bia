@@ -35,6 +35,8 @@ pub struct Settings {
     pub hidden: Vec<String>,
     /// Typing `(`, `[`, `{` or a quote also types the closing half.
     pub auto_close: bool,
+    /// Long lines wrap at the window's edge instead of scrolling sideways.
+    pub soft_wrap: bool,
 }
 
 impl Default for Settings {
@@ -52,6 +54,7 @@ impl Default for Settings {
                 .map(String::from)
                 .to_vec(),
             auto_close: true,
+            soft_wrap: false,
         }
     }
 }

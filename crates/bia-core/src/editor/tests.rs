@@ -455,3 +455,40 @@ fn check(ed: &Editor, seed: u64, log: &[String]) {
     }
     assert_eq!(ed.line_count(), text.split('\n').count());
 }
+
+#[test]
+fn changed_lines_are_logged() {
+    let mut ed = editor("a\nb\n|c");
+    let start = ed.revision();
+    assert_eq!(ed.first_changed_line(start), None);
+    typed(&mut ed, "x");
+    assert_eq!(ed.first_changed_line(start), Some(2));
+    let mid = ed.revision();
+    ed.move_cursors(Motion::DocumentStart, false);
+    typed(&mut ed, "y");
+    assert_eq!(ed.first_changed_line(mid), Some(0));
+    let end = ed.revision();
+    ed.undo();
+    assert_eq!(ed.first_changed_line(end), Some(0));
+}
+
+#[test]
+fn drag_by_word_and_line() {
+    let mut ed = editor("foo bar baz\nqux");
+    ed.drag(4..7, 9, Unit::Word);
+    assert_eq!(show(&ed), "foo [bar baz]\nqux");
+    ed.drag(4..7, 1, Unit::Word);
+    assert_eq!(show(&ed), "[foo bar]< baz\nqux");
+    ed.drag(0..0, 13, Unit::Line);
+    assert_eq!(show(&ed), "[foo bar baz\nqux]");
+}
+
+#[test]
+fn brackets_match() {
+    // Not through `editor()`: its notation uses square brackets.
+    let ed = Editor::new("f(a[1], {b})", Indent::spaces(4));
+    assert_eq!(ed.matching_bracket(1), Some((1, 11)));
+    assert_eq!(ed.matching_bracket(12), Some((1, 11)));
+    assert_eq!(ed.matching_bracket(4), Some((3, 5)));
+    assert_eq!(ed.matching_bracket(0), None);
+}

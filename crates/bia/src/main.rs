@@ -9,10 +9,11 @@
 
 mod app;
 mod buffer;
+mod code_view;
 mod fonts;
-mod highlighter;
 mod icons;
 mod keys;
+mod syntax;
 mod tabs;
 mod ui;
 

@@ -20,22 +20,26 @@
 //! | F2 / Delete           | Rename / trash selection   |
 //! | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset   |
 //!
-//! In the editor:
+//! In the editor ([`editor_command`]), besides arrows, Home, End and the
+//! clipboard:
 //!
 //! | Keys                  | Action                     |
 //! |-----------------------|----------------------------|
 //! | Ctrl+/                | Comment / uncomment lines  |
 //! | Alt+Up / Alt+Down     | Move lines                 |
 //! | Shift+Alt+Up / Down   | Duplicate lines            |
+//! | Ctrl+Alt+Up / Down    | Add a cursor above / below |
+//! | Ctrl+D                | Select next occurrence     |
+//! | Ctrl+Shift+L          | Select all occurrences     |
 //! | Ctrl+Shift+K          | Delete lines               |
 //! | Ctrl+L                | Select line (again: more)  |
+//! | Alt+click             | Add or remove a cursor     |
 //!
 //! On macOS, `Cmd` replaces `Ctrl` and `Option` is `Alt`.
 
-use crate::app::Message;
+use bia_core::editor::Motion;
 use iced::keyboard::key::{Named, Physical};
 use iced::keyboard::{Key, Modifiers};
-use iced::widget::text_editor::{Action, Binding, Edit, KeyPress, Status};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
@@ -130,73 +134,125 @@ pub fn label(keys: &str) -> String {
     if cfg!(target_os = "macos") { keys.replace("Ctrl+", "⌘") } else { keys.to_owned() }
 }
 
-/// Commands on the text that only make sense while the editor has focus.
+/// What a key does in the editor, while it has focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EditorCommand {
+pub enum Command {
+    /// Move every cursor; `true` extends the selections.
+    Move(Motion, bool),
+    Page {
+        down: bool,
+        extend: bool,
+    },
+    Backspace,
+    Delete,
+    DeleteWord {
+        forward: bool,
+    },
+    Newline,
+    Indent,
+    Outdent,
+    SelectAll,
+    Copy,
+    Cut,
+    Paste,
     ToggleComment,
-    MoveLines { up: bool },
-    DuplicateLines { down: bool },
+    MoveLines {
+        up: bool,
+    },
+    DuplicateLines {
+        down: bool,
+    },
     DeleteLines,
     SelectLines,
+    SelectNext,
+    SelectAllOccurrences,
+    AddCursor {
+        up: bool,
+    },
+    /// Escape with several cursors: back to one.
+    Collapse,
 }
 
-fn editor_command(press: &KeyPress) -> Option<EditorCommand> {
-    use EditorCommand::*;
-    let mods = press.modifiers;
-    if let Key::Named(named @ (Named::ArrowUp | Named::ArrowDown)) = press.key {
-        if !mods.alt() || mods.command() {
-            return None;
-        }
-        let up = named == Named::ArrowUp;
-        return Some(if mods.shift() { DuplicateLines { down: !up } } else { MoveLines { up } });
+/// The editor's keys. Anything else (Ctrl+S, Ctrl+F…) isn't the editor's
+/// and goes on to [`shortcut`].
+pub fn editor_command(key: &Key, physical: Physical, mods: Modifiers) -> Option<Command> {
+    use Command::*;
+    let (cmd, shift, alt) = (mods.command(), mods.shift(), mods.alt());
+    // Word steps: Option on macOS, Ctrl elsewhere.
+    let word = if MAC { alt } else { cmd };
+    if let Key::Named(named) = key {
+        return Some(match named {
+            Named::ArrowLeft | Named::ArrowRight => {
+                let right = *named == Named::ArrowRight;
+                let motion = if MAC && cmd {
+                    if right { Motion::LineEnd } else { Motion::LineStart }
+                } else if word {
+                    if right { Motion::WordRight } else { Motion::WordLeft }
+                } else if right {
+                    Motion::Right
+                } else {
+                    Motion::Left
+                };
+                Move(motion, shift)
+            }
+            Named::ArrowUp | Named::ArrowDown => {
+                let up = *named == Named::ArrowUp;
+                match (cmd, alt) {
+                    (true, true) => AddCursor { up },
+                    (false, true) if shift => DuplicateLines { down: !up },
+                    (false, true) => MoveLines { up },
+                    (true, false) if MAC => {
+                        Move(if up { Motion::DocumentStart } else { Motion::DocumentEnd }, shift)
+                    }
+                    (true, false) => return None,
+                    (false, false) => Move(if up { Motion::Up } else { Motion::Down }, shift),
+                }
+            }
+            Named::Home | Named::End => {
+                let end = *named == Named::End;
+                let motion = match (cmd, end) {
+                    (true, false) => Motion::DocumentStart,
+                    (true, true) => Motion::DocumentEnd,
+                    (false, false) => Motion::LineStart,
+                    (false, true) => Motion::LineEnd,
+                };
+                Move(motion, shift)
+            }
+            Named::PageUp | Named::PageDown => {
+                Page { down: *named == Named::PageDown, extend: shift }
+            }
+            Named::Backspace if word => DeleteWord { forward: false },
+            Named::Backspace => Backspace,
+            Named::Delete if word => DeleteWord { forward: true },
+            Named::Delete => Delete,
+            Named::Enter if !cmd => Newline,
+            Named::Tab if !cmd && !alt => {
+                if shift {
+                    Outdent
+                } else {
+                    Indent
+                }
+            }
+            Named::Escape => Collapse,
+            _ => return None,
+        });
     }
-    if !mods.command() || mods.alt() {
+    if !cmd || alt {
         return None;
     }
-    Some(match press.key.to_latin(press.physical_key)?.to_ascii_lowercase() {
+    Some(match key.to_latin(physical)?.to_ascii_lowercase() {
+        'a' if !shift => SelectAll,
+        'c' if !shift => Copy,
+        'x' if !shift => Cut,
+        'v' if !shift => Paste,
         // Layouts that need Shift for `/` (German, for one) still get it.
         '/' => ToggleComment,
-        'k' if mods.shift() => DeleteLines,
-        'l' if !mods.shift() => SelectLines,
+        'k' if shift => DeleteLines,
+        'l' if shift => SelectAllOccurrences,
+        'l' => SelectLines,
+        'd' if !shift => SelectNext,
         _ => return None,
     })
-}
-
-/// Key handling inside the editor. Clipboard and motion keys keep iced's
-/// defaults; `Tab` indents; every other `Ctrl` combination is *not* consumed,
-/// so it reaches the global shortcut handler above.
-pub fn editor_binding(press: KeyPress) -> Option<Binding<Message>> {
-    if !matches!(press.status, Status::Focused { .. }) {
-        return None;
-    }
-    let mods = press.modifiers;
-    // The editor lives in an outer scroll area, so it can't know how tall a
-    // "page" is. BIA handles paging itself.
-    if let Key::Named(named @ (Named::PageUp | Named::PageDown)) = press.key {
-        let down = named == Named::PageDown;
-        return Some(Binding::Custom(Message::Page { down, select: mods.shift() }));
-    }
-    if let Some(command) = editor_command(&press) {
-        return Some(Binding::Custom(Message::Command(command)));
-    }
-    if let Key::Named(Named::Tab) = press.key {
-        if mods.control() || mods.alt() || mods.logo() {
-            return None;
-        }
-        let edit = if mods.shift() { Edit::Unindent } else { Edit::Indent };
-        return Some(Binding::Custom(Message::Edit(Action::Edit(edit))));
-    }
-    if mods.command() {
-        let clipboard_or_select_all = matches!(
-            press.key.to_latin(press.physical_key).map(|c| c.to_ascii_lowercase()),
-            Some('c' | 'x' | 'v' | 'a')
-        ) && !mods.shift();
-        let is_motion = matches!(press.key, Key::Named(_));
-        if !clipboard_or_select_all && !is_motion {
-            return None;
-        }
-    }
-    Binding::from_key_press(press)
 }
 
 #[cfg(test)]
@@ -236,6 +292,48 @@ mod tests {
         // Typing letters without Ctrl is never a shortcut.
         assert_eq!(press("s", Code::KeyS, Modifiers::empty()), None);
         assert_eq!(press("S", Code::KeyS, Modifiers::SHIFT), None);
+    }
+
+    fn editor_key(key: Key, code: Code, mods: Modifiers) -> Option<Command> {
+        editor_command(&key, Physical::Code(code), mods)
+    }
+
+    #[test]
+    fn editor_keys() {
+        let arrow = |n| Key::Named(n);
+        let word = if MAC { Modifiers::ALT } else { Modifiers::CTRL };
+        assert_eq!(
+            editor_key(arrow(Named::ArrowRight), Code::ArrowRight, word | Modifiers::SHIFT),
+            Some(Command::Move(Motion::WordRight, true))
+        );
+        assert_eq!(
+            editor_key(arrow(Named::ArrowUp), Code::ArrowUp, Modifiers::ALT),
+            Some(Command::MoveLines { up: true })
+        );
+        assert_eq!(
+            editor_key(arrow(Named::ArrowDown), Code::ArrowDown, Modifiers::ALT | Modifiers::SHIFT),
+            Some(Command::DuplicateLines { down: true })
+        );
+        assert_eq!(
+            editor_key(
+                arrow(Named::ArrowDown),
+                Code::ArrowDown,
+                Modifiers::COMMAND | Modifiers::ALT
+            ),
+            Some(Command::AddCursor { up: false })
+        );
+        let c = |s: &str, code, mods| editor_key(Key::Character(s.into()), code, mods);
+        assert_eq!(c("d", Code::KeyD, Modifiers::COMMAND), Some(Command::SelectNext));
+        assert_eq!(
+            c("L", Code::KeyL, Modifiers::COMMAND | Modifiers::SHIFT),
+            Some(Command::SelectAllOccurrences)
+        );
+        assert_eq!(c("v", Code::KeyV, Modifiers::COMMAND), Some(Command::Paste));
+        // Global shortcuts aren't the editor's.
+        assert_eq!(c("s", Code::KeyS, Modifiers::COMMAND), None);
+        assert_eq!(c("V", Code::KeyV, Modifiers::COMMAND | Modifiers::SHIFT), None);
+        // Plain letters are typing.
+        assert_eq!(c("a", Code::KeyA, Modifiers::empty()), None);
     }
 
     #[test]
