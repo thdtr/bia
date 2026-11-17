@@ -1,0 +1,28 @@
+# Deployed from this folder with the Netlify CLI (project: bia-editor).
+# A Git-connected build would use the same settings.
+[build]
+  publish = "public"
+  command = "zola build"
+
+[build.environment]
+  ZOLA_VERSION = "0.23.6"
+
+# Like BIA, the site loads nothing from other servers. The CSP makes the
+# browser enforce it.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

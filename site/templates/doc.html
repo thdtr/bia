@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block body_class %}docs{% endblock %}
+{% block title %}{{ page.title }} | BIA{% endblock %}
+{% block content %}
+<div class="container docs__grid">
+  {% include "docs-nav.html" %}
+  <article class="prose docs__body">
+    <h1>{{ page.title }}</h1>
+    {{ page.content | safe }}
+    <nav class="docs__pager" aria-label="{{ trans(key='docs_prev', lang=lang) }} / {{ trans(key='docs_next', lang=lang) }}">
+      {%- if page.higher %}
+      <a class="docs__prev" href="{{ page.higher.permalink }}" rel="prev"><span>{{ trans(key="docs_prev", lang=lang) }}</span>{{ page.higher.title }}</a>
+      {%- endif %}
+      {%- if page.lower %}
+      <a class="docs__next" href="{{ page.lower.permalink }}" rel="next"><span>{{ trans(key="docs_next", lang=lang) }}</span>{{ page.lower.title }}</a>
+      {%- endif %}
+    </nav>
+    <p class="docs__edit"><a href="{{ config.extra.repo }}/blob/main/site/content/{{ page.relative_path }}">{{ trans(key="docs_edit", lang=lang) }}</a></p>
+  </article>
+  {%- if page.toc | length > 1 %}
+  <aside class="docs__toc" aria-labelledby="toc-title">
+    <p id="toc-title" class="docs__toc-title">{{ trans(key="docs_contents", lang=lang) }}</p>
+    <ul>
+      {%- for h in page.toc %}
+      <li><a href="#{{ h.id }}">{{ h.title }}</a></li>
+      {%- endfor %}
+    </ul>
+  </aside>
+  {%- endif %}
+</div>
+{% endblock %}

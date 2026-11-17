@@ -1,0 +1,83 @@
+{%- if page %}{% set item = page %}{% elif section %}{% set item = section %}{% else %}{% set item = false %}{% endif -%}
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ item.title }}{% endblock %}</title>
+  {%- if item %}
+  <meta name="description" content="{{ item.description | default(value=config.description) }}">
+  <link rel="canonical" href="{{ item.permalink }}">
+  {%- for t in item.translations %}
+  <link rel="alternate" hreflang="{{ t.lang }}" href="{{ t.permalink }}">
+  {%- if t.lang == config.default_language %}
+  <link rel="alternate" hreflang="x-default" href="{{ t.permalink }}">
+  {%- endif %}
+  {%- endfor %}
+  {%- endif %}
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f8f5ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121116" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="BIA">
+  {%- if item %}
+  <meta property="og:title" content="{{ item.title }}">
+  <meta property="og:description" content="{{ item.description | default(value=config.description) }}">
+  <meta property="og:url" content="{{ item.permalink }}">
+  {%- endif %}
+  <meta property="og:image" content="{{ get_url(path='img/social.png') }}">
+  <meta property="og:locale" content="{% if lang == 'pt-br' %}pt_BR{% else %}en_US{% endif %}">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="{{ get_url(path='favicon.svg') }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ get_url(path='apple-touch-icon.png') }}">
+  <link rel="preload" href="{{ get_url(path='fonts/fira-sans-400.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ get_url(path='fonts/fira-sans-300.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{ get_url(path='css/tokens.css', cachebust=true) }}">
+  <link rel="stylesheet" href="{{ get_url(path='css/base.css', cachebust=true) }}">
+  <link rel="stylesheet" href="{{ get_url(path='giallo-light.css', cachebust=true) }}" media="(prefers-color-scheme: light)" id="code-dia">
+  <link rel="stylesheet" href="{{ get_url(path='giallo-dark.css', cachebust=true) }}" media="(prefers-color-scheme: dark)" id="code-noite">
+  <link rel="stylesheet" href="{{ get_url(path='css/site.css', cachebust=true) }}">
+  <script src="{{ get_url(path='js/theme.js', cachebust=true) }}"></script>
+  <script src="{{ get_url(path='js/site.js', cachebust=true) }}" defer></script>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip" href="#main">{{ trans(key="skip", lang=lang) }}</a>
+  {%- set home = get_url(path="@/_index.md", lang=lang) %}
+  {%- set docs = get_url(path="@/docs/_index.md", lang=lang) %}
+  <header class="nav">
+    <div class="container nav__bar">
+      <a class="nav__logo" href="{{ home }}" aria-label="{{ trans(key='home', lang=lang) }}">{{ <logo/> }}</a>
+      <nav class="nav__links" aria-label="{{ trans(key='nav_label', lang=lang) }}">
+        {%- set path = current_path | default(value="/") %}{% set in_docs = path is containing(pat="docs/") %}
+        <a href="{{ docs }}"{% if in_docs %} aria-current="{% if path is ending_with(pat="docs/") %}page{% else %}true{% endif %}"{% endif %}>{{ trans(key="nav_docs", lang=lang) }}</a>
+        <a class="nav__source" href="{{ config.extra.repo }}">{{ trans(key="nav_source", lang=lang) }}</a>
+        {%- if item %}{% for t in item.translations %}{% if t.lang != lang %}
+        <a href="{{ t.permalink }}" hreflang="{{ t.lang }}" lang="{{ t.lang }}">{{ trans(key="lang_name", lang=t.lang) }}</a>
+        {%- endif %}{% endfor %}{% endif %}
+      </nav>
+      <div class="switch" role="group" aria-label="{{ trans(key='theme_label', lang=lang) }}" hidden data-theme-switch>
+        <button type="button" data-set-theme="noite" title="{{ trans(key='theme_noite', lang=lang) }}">Noite</button>
+        <button type="button" data-set-theme="dia" title="{{ trans(key='theme_dia', lang=lang) }}">Dia</button>
+      </div>
+    </div>
+  </header>
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">
+    <div class="container footer__grid">
+      <a class="footer__logo" href="{{ home }}" aria-label="{{ trans(key='home', lang=lang) }}">{{ <logo/> }}</a>
+      <ul class="footer__links">
+        <li><a href="{{ docs }}">{{ trans(key="footer_docs", lang=lang) }}</a></li>
+        <li><a href="{{ config.extra.repo }}/blob/main/CHANGELOG.md">{{ trans(key="footer_changelog", lang=lang) }}</a></li>
+        <li><a href="{{ config.extra.repo }}">{{ trans(key="footer_source", lang=lang) }}</a></li>
+        <li><a href="{{ config.extra.repo }}/issues">{{ trans(key="footer_issues", lang=lang) }}</a></li>
+      </ul>
+      <div class="footer__fine">
+        <p>{{ trans(key="footer_license", lang=lang) }}</p>
+        <p>{{ trans(key="footer_fonts", lang=lang) }}</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

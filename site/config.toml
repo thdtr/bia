@@ -1,0 +1,106 @@
+base_url = "https://bia-editor.netlify.app"
+title = "BIA"
+description = "A small code editor for Linux, macOS and Windows, written in Rust. No network code."
+default_language = "en"
+compile_sass = false
+minify_html = false
+generate_feeds = false
+build_search_index = false
+
+[markdown]
+smart_punctuation = true
+external_links_no_follow = false
+external_links_no_referrer = true
+
+[markdown.highlighting]
+# BIA's own Noite and Dia, as VS Code themes for giallo. Class mode keeps
+# inline styles out, so the CSP can stay strict.
+extra_themes = ["highlight/bia-dia.json", "highlight/bia-noite.json"]
+light_theme = "bia-dia"
+dark_theme = "bia-noite"
+style = "class"
+
+[slugify]
+paths = "safe"
+anchors = "on"
+
+[extra]
+repo = "https://github.com/thdtr/bia"
+install_sh = "curl -fsSL https://raw.githubusercontent.com/thdtr/bia/main/install.sh | sh"
+install_ps1 = "irm https://raw.githubusercontent.com/thdtr/bia/main/install.ps1 | iex"
+# Release assets, as named by .github/workflows/release.yml.
+builds = [
+  { os = "Linux", cpu = "x86_64", file = "bia-x86_64-unknown-linux-gnu.tar.gz" },
+  { os = "Linux", cpu = "ARM64", file = "bia-aarch64-unknown-linux-gnu.tar.gz" },
+  { os = "macOS", cpu = "apple", file = "bia-aarch64-apple-darwin.tar.gz" },
+  { os = "macOS", cpu = "intel", file = "bia-x86_64-apple-darwin.tar.gz" },
+  { os = "Windows", cpu = "x86_64", file = "bia-x86_64-pc-windows-msvc.zip" },
+]
+
+[translations]
+lang_name = "English"
+skip = "Skip to content"
+home = "BIA home page"
+nav_docs = "Docs"
+nav_source = "GitHub"
+nav_label = "Main"
+theme_label = "Theme"
+theme_dia = "Light theme (Dia)"
+theme_noite = "Dark theme (Noite)"
+lang_label = "Language"
+copy = "Copy"
+copied = "Copied"
+copy_failed = "Select and copy"
+docs_label = "Documentation"
+docs_contents = "On this page"
+docs_edit = "Suggest a change to this page"
+docs_prev = "Previous"
+docs_next = "Next"
+footer_docs = "Documentation"
+footer_changelog = "Changelog"
+footer_source = "Source code"
+footer_issues = "Report a bug"
+footer_license = "MIT or Apache 2.0, your choice."
+footer_fonts = "Fira Sans and Fira Code are under the SIL Open Font License."
+not_found_title = "Page not found"
+not_found_text = "There is nothing at this address. It may have moved when the docs changed."
+not_found_link = "Go to the home page"
+cpu_apple = "Apple silicon"
+cpu_intel = "Intel"
+
+[languages.pt-br]
+title = "BIA"
+description = "Um editor de código pequeno para Linux, macOS e Windows, feito em Rust. Sem código de rede."
+generate_feeds = false
+build_search_index = false
+
+[languages.pt-br.translations]
+lang_name = "Português"
+skip = "Pular para o conteúdo"
+home = "Página inicial do BIA"
+nav_docs = "Documentação"
+nav_source = "GitHub"
+nav_label = "Principal"
+theme_label = "Tema"
+theme_dia = "Tema claro (Dia)"
+theme_noite = "Tema escuro (Noite)"
+lang_label = "Idioma"
+copy = "Copiar"
+copied = "Copiado"
+copy_failed = "Selecione e copie"
+docs_label = "Documentação"
+docs_contents = "Nesta página"
+docs_edit = "Sugerir uma alteração nesta página"
+docs_prev = "Anterior"
+docs_next = "Próxima"
+footer_docs = "Documentação"
+footer_changelog = "Histórico de versões"
+footer_source = "Código-fonte"
+footer_issues = "Relatar um problema"
+footer_license = "MIT ou Apache 2.0, você escolhe."
+footer_fonts = "As fontes Fira Sans e Fira Code usam a SIL Open Font License."
+not_found_title = "Página não encontrada"
+not_found_text = "Não há nada neste endereço. Ele pode ter mudado quando a documentação foi reorganizada."
+not_found_link = "Ir para a página inicial"
+cpu_apple = "Apple silicon"
+cpu_intel = "Intel"

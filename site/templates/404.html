@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ trans(key="not_found_title", lang=lang) }} | BIA{% endblock %}
+{% block content %}
+<div class="container not-found">
+  <h1 class="section-title">{{ trans(key="not_found_title", lang=lang) }}</h1>
+  <p>{{ trans(key="not_found_text", lang=lang) }}</p>
+  <p><a href="{{ get_url(path='@/_index.md', lang=lang) }}">{{ trans(key="not_found_link", lang=lang) }}</a></p>
+</div>
+{% endblock %}

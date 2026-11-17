@@ -1,0 +1,114 @@
+/* BIA design tokens. Colours come from the editor's own themes
+   (assets/themes/dia.json and noite.json), nudged only where the web needs
+   AA contrast for small text. Dia is the light mode, Noite the dark one. */
+
+@font-face { font-family: "Fira Sans"; font-weight: 300; font-style: normal; font-display: swap; src: url("../fonts/fira-sans-300.woff2") format("woff2"); }
+@font-face { font-family: "Fira Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("../fonts/fira-sans-400.woff2") format("woff2"); }
+@font-face { font-family: "Fira Sans"; font-weight: 700; font-style: normal; font-display: swap; src: url("../fonts/fira-sans-700.woff2") format("woff2"); }
+@font-face { font-family: "Fira Code"; font-weight: 400; font-style: normal; font-display: swap; src: url("../fonts/fira-code-400.woff2") format("woff2"); }
+
+:root {
+  color-scheme: light dark;
+
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+
+  --text-xs: 0.8125rem; --text-sm: 0.875rem; --text-md: 1rem; --text-body: 1.0625rem; --text-lg: 1.25rem; --text-xl: 1.5625rem;
+  --text-display: clamp(2.75rem, 4.6vw + 1rem, 5.75rem);
+  --text-section: clamp(2rem, 2.4vw + 1rem, 3.5rem);
+  --text-title: clamp(1.25rem, 0.6vw + 1rem, 1.5rem);
+  --text-lead: clamp(1.125rem, 0.4vw + 1rem, 1.375rem);
+  --text-statement: clamp(1.75rem, 2.6vw + 0.75rem, 3.25rem);
+  --text-code: 0.875rem;
+  --tracking-display: -0.03em;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+
+  --container: 1360px; --gutter: 64px; --gap-columns: 40px;
+  --section-gap-s: 128px; --section-gap: 176px; --section-gap-l: 216px;
+  --nav-height: 72px;
+
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+
+  --radius-control: 6px; --radius-card: 10px; --radius-pill: 999px; --rule-hair: 1px;
+
+  --font-display: "Fira Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Fira Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-code: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-outlier: var(--font-code);
+
+  /* Dia */
+  --color-paper: oklch(97.1% 0.009 85);      /* #f8f5ef, Dia background */
+  --color-paper-2: oklch(94.4% 0.012 85);    /* #f0ece4, Dia panel */
+  --color-paper-3: oklch(92% 0.016 86);      /* #e9e4d9, Dia hover */
+  --color-rule: oklch(87.5% 0.02 86);
+  --color-ink: oklch(27.9% 0.008 75);        /* #2b2824 */
+  --color-ink-2: oklch(40% 0.012 78);
+  --color-muted: oklch(52% 0.017 81);
+  --color-accent: oklch(50.2% 0.089 173);    /* Dia accent, one step darker for text */
+  --color-accent-ink: oklch(97.1% 0.009 85);
+  --color-focus: oklch(52% 0.12 173);
+  --color-bird: oklch(59.4% 0.103 174);      /* the logo on light */
+  --color-shadow: oklch(30% 0.02 80 / 0.08);
+
+  /* Dia's syntax colours, darkened where they missed 4.5:1 on paper-2 */
+  --syn-comment: oklch(52% 0.017 81);
+  --syn-punct: oklch(50.9% 0.017 81);
+  --syn-keyword: oklch(50.2% 0.139 38);
+  --syn-string: oklch(48.4% 0.097 137);
+  --syn-function: oklch(50.8% 0.108 73);
+  --syn-type: oklch(44.8% 0.072 239);
+  --syn-constant: oklch(46.9% 0.138 324);
+}
+
+:root[data-theme="noite"] {
+  color-scheme: dark;
+  --color-paper: oklch(18.1% 0.01 295);      /* #121116, Noite panel */
+  --color-paper-2: oklch(21.5% 0.013 295);
+  --color-paper-3: oklch(24% 0.015 297);
+  --color-rule: oklch(30% 0.016 297);
+  --color-ink: oklch(87.8% 0.016 83);        /* #dcd6cb */
+  --color-ink-2: oklch(76% 0.015 300);
+  --color-muted: oklch(66.5% 0.02 305);
+  --color-accent: oklch(70% 0.112 175);      /* #3fb59b */
+  --color-accent-ink: oklch(18.1% 0.01 295);
+  --color-focus: oklch(74% 0.12 175);
+  --color-bird: oklch(70% 0.112 175);
+  --color-shadow: oklch(5% 0.01 295 / 0.5);
+
+  --syn-comment: oklch(63.4% 0.025 303);
+  --syn-punct: oklch(63.4% 0.025 303);
+  --syn-keyword: oklch(74.4% 0.101 41);
+  --syn-string: oklch(80.8% 0.068 127);
+  --syn-function: oklch(84.5% 0.099 84);
+  --syn-type: oklch(76.3% 0.051 229);
+  --syn-constant: oklch(77.6% 0.084 331);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="dia"]) {
+    color-scheme: dark;
+    --color-paper: oklch(18.1% 0.01 295);
+    --color-paper-2: oklch(21.5% 0.013 295);
+    --color-paper-3: oklch(24% 0.015 297);
+    --color-rule: oklch(30% 0.016 297);
+    --color-ink: oklch(87.8% 0.016 83);
+    --color-ink-2: oklch(76% 0.015 300);
+    --color-muted: oklch(66.5% 0.02 305);
+    --color-accent: oklch(70% 0.112 175);
+    --color-accent-ink: oklch(18.1% 0.01 295);
+    --color-focus: oklch(74% 0.12 175);
+    --color-bird: oklch(70% 0.112 175);
+    --color-shadow: oklch(5% 0.01 295 / 0.5);
+
+    --syn-comment: oklch(63.4% 0.025 303);
+    --syn-punct: oklch(63.4% 0.025 303);
+    --syn-keyword: oklch(74.4% 0.101 41);
+    --syn-string: oklch(80.8% 0.068 127);
+    --syn-function: oklch(84.5% 0.099 84);
+    --syn-type: oklch(76.3% 0.051 229);
+    --syn-constant: oklch(77.6% 0.084 331);
+  }
+}
+
+:root[data-theme="dia"] { color-scheme: light; }

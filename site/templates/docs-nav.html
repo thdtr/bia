@@ -1,0 +1,12 @@
+{%- set docs_section = get_section(path="docs/_index.md", lang=lang) %}
+<nav class="docs-nav" aria-label="{{ trans(key='docs_label', lang=lang) }}">
+  <details class="docs-nav__menu" data-docs-menu open>
+    <summary>{{ trans(key="docs_label", lang=lang) }}</summary>
+    <ul>
+      <li><a href="{{ docs_section.permalink }}"{% if current_path is ending_with(pat="docs/") %} aria-current="page"{% endif %}>{{ docs_section.title }}</a></li>
+      {%- for p in docs_section.pages %}
+      <li><a href="{{ p.permalink }}"{% if page and page.permalink == p.permalink %} aria-current="page"{% endif %}>{{ p.title }}</a></li>
+      {%- endfor %}
+    </ul>
+  </details>
+</nav>

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block body_class %}home{% endblock %}
+{% block content %}
+{%- set x = section.extra %}
+{%- set docs = get_url(path="@/docs/_index.md", lang=lang) %}
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="container">
+    <h1 id="hero-title" class="hero__title">{{ x.headline }}</h1>
+    <div class="hero__row">
+      <p class="hero__lede">{{ x.lede }}</p>
+      <div class="install" data-install>
+        <div class="install__bar">
+          <div class="install__tabs" role="tablist" aria-label="{{ x.tab_unix }} / {{ x.tab_windows }}" hidden>
+            <button type="button" role="tab" id="tab-unix" aria-controls="cmd-unix" aria-selected="true" data-os="unix">{{ x.tab_unix }}</button>
+            <button type="button" role="tab" id="tab-windows" aria-controls="cmd-windows" aria-selected="false" tabindex="-1" data-os="windows">{{ x.tab_windows }}</button>
+          </div>
+          <button type="button" class="button" data-copy hidden>{{ trans(key="copy", lang=lang) }}</button>
+        </div>
+        {%- for os in ["unix", "windows"] %}
+        {%- set cmd = config.extra.install_sh %}{% if os == "windows" %}{% set cmd = config.extra.install_ps1 %}{% endif %}
+        <div class="install__panel" id="cmd-{{ os }}" role="tabpanel" aria-labelledby="tab-{{ os }}" data-os="{{ os }}">
+          <p class="install__label">{% if os == "unix" %}{{ x.tab_unix }}{% else %}{{ x.tab_windows }}{% endif %}</p>
+          <code class="install__cmd">{{ cmd }}</code>
+        </div>
+        {%- endfor %}
+        <p class="install__note">{{ x.install_note | markdown(inline=true) | safe }}</p>
+        <p class="visually-hidden" role="status" data-copy-status data-done="{{ trans(key='copied', lang=lang) }}" data-failed="{{ trans(key='copy_failed', lang=lang) }}"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<figure class="shot container">
+  <img src="{{ get_url(path='img/bia-macos.webp') }}"
+       srcset="{{ get_url(path='img/bia-macos-1x.webp') }} 1292w, {{ get_url(path='img/bia-macos.webp') }} 2584w"
+       sizes="(min-width: 88rem) 1350px, (min-width: 40rem) 110vw, 250vw"
+       width="1292" height="904" alt="{{ x.shot_alt }}" fetchpriority="high" decoding="async">
+  <figcaption>{{ x.shot_caption }}</figcaption>
+</figure>
+
+<section class="features" aria-labelledby="features-title">
+  <div class="container split">
+    <h2 id="features-title" class="section-title">{{ x.features_title }}</h2>
+    <dl class="features__list">
+      {%- for f in x.features %}
+      <div class="features__item">
+        <dt>{{ f.name }}</dt>
+        <dd>{{ f.text | markdown(inline=true) | safe }}</dd>
+      </div>
+      {%- endfor %}
+    </dl>
+  </div>
+</section>
+
+<section class="left-out" aria-labelledby="left-out-title">
+  <div class="container split">
+    <h2 id="left-out-title" class="section-title">{{ x.left_out_title }}</h2>
+    <div>
+      <ul class="left-out__list">
+        {%- for item in x.left_out %}
+        <li>{{ item }}</li>
+        {%- endfor %}
+      </ul>
+      <p class="left-out__note">{{ x.left_out_note }}</p>
+    </div>
+  </div>
+</section>
+
+<section class="saves" aria-labelledby="saves-title">
+  <div class="container">
+    <div class="section-head">
+      <h2 id="saves-title" class="section-title">{{ x.saves_title }}</h2>
+      <p class="section-lede">{{ x.saves_lede }}</p>
+    </div>
+    <ol class="saves__steps">
+      {%- for step in x.saves_steps %}
+      <li class="saves__step">
+        <p class="saves__name">{{ step }}</p>
+        <pre class="saves__tree" aria-hidden="true"><span class="t-dir">src/</span>
+{% if loop.index < 3 %}  main.rs
+  <span class="{% if loop.index == 1 %}t-new{% else %}t-done{% endif %}">.main.rs.bia~3a7f</span>{% else %}  <span class="t-done">main.rs</span>{% endif %}</pre>
+      </li>
+      {%- endfor %}
+    </ol>
+    <ul class="saves__notes">
+      {%- for n in x.saves_notes %}
+      <li>{{ n }}</li>
+      {%- endfor %}
+    </ul>
+  </div>
+</section>
+
+<section class="settings" aria-labelledby="settings-title">
+  <div class="container settings__grid">
+    <div class="section-head">
+      <h2 id="settings-title" class="section-title">{{ x.settings_title }}</h2>
+      <p class="section-lede">{{ x.settings_lede | markdown(inline=true) | safe }}</p>
+      <p><a href="{{ get_url(path='@/docs/settings.md', lang=lang) }}">{{ x.settings_link }}</a></p>
+    </div>
+    <div class="settings__code">
+      <p class="code-name">settings.json</p>
+      {%- set settings_md %}
+```json
+{
+  "font_family": "Fira Code",
+  "font_size": 14,
+  "tab_size": 4,
+  "theme": "noite",
+  "language": "auto",
+  "hidden": [".git", "node_modules", "target"]
+}
+```
+{% endset %}
+      {{ settings_md | markdown | safe }}
+    </div>
+  </div>
+</section>
+
+<section class="sealed" aria-labelledby="sealed-title">
+  <div class="container sealed__grid">
+    <div class="section-head">
+      <h2 id="sealed-title" class="section-title">{{ x.sealed_title }}</h2>
+      <p class="section-lede">{{ x.sealed_lede }}</p>
+    </div>
+    {%- set sealed_md %}
+```sh
+{{ x.sealed_code | trim }}
+```
+{% endset %}
+    <div class="sealed__code">
+      <p class="code-name">{{ x.sealed_code_label }}</p>
+      {{ sealed_md | markdown | safe }}
+    </div>
+    <div class="sealed__aside">
+      <p>{{ x.sealed_site }}</p>
+      <p><a href="{{ get_url(path='@/docs/network.md', lang=lang) }}">{{ x.sealed_link }}</a></p>
+    </div>
+  </div>
+</section>
+
+<section class="download" id="download" aria-labelledby="download-title">
+  <div class="container">
+    <h2 id="download-title" class="section-title">{{ x.download_title }}</h2>
+    <table class="download__table">
+      <thead>
+        <tr>{% for h in x.download_head %}<th scope="col">{{ h }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {%- for b in config.extra.builds %}
+        <tr>
+          <th scope="row">{{ b.os }}</th>
+          <td>{% if b.cpu == "apple" %}{{ trans(key="cpu_apple", lang=lang) }}{% elif b.cpu == "intel" %}{{ trans(key="cpu_intel", lang=lang) }}{% else %}{{ b.cpu }}{% endif %}</td>
+          <td><a href="{{ config.extra.repo }}/releases/latest/download/{{ b.file }}" download><code>{{ b.file }}</code></a></td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    <div class="download__note">
+      <p>{{ x.download_note }}</p>
+      <p><a href="{{ get_url(path='@/docs/install.md', lang=lang) }}#{{ x.download_anchor }}">{{ x.download_link }}</a></p>
+    </div>
+  </div>
+</section>
+{% endblock %}
