@@ -14,6 +14,7 @@
 
 mod explorer;
 pub mod layout;
+mod palette;
 pub mod style;
 mod workspace;
 
@@ -39,10 +40,14 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     let body = column![main, rule::horizontal(1).style(style::rule(c)), status_bar(app)];
     let base = container(body).width(Fill).height(Fill).style(style::surface(c.background, c.text));
 
-    match &app.dialog {
-        Some(dialog) => stack![base, dialog_view(app, dialog)].into(),
-        None => base.into(),
+    let mut layers = stack![base];
+    if let Some(p) = &app.palette {
+        layers = layers.push(palette::view(app, p));
     }
+    if let Some(dialog) = &app.dialog {
+        layers = layers.push(dialog_view(app, dialog));
+    }
+    layers.into()
 }
 
 /// Interface text in the UI font.
@@ -135,6 +140,11 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
         let syntax =
             if buffer.syntax == "Plain Text" { t.t("status.plain_text") } else { &buffer.syntax };
         let encoding = if buffer.bom { "UTF-8 BOM" } else { "UTF-8" };
+        let indent = if buffer.indent.tabs {
+            t.t("status.tabs").to_owned()
+        } else {
+            t.f("status.spaces", &[("width", &buffer.indent.width)])
+        };
         let eol = buffer.line_ending.label();
         let eol = if buffer.mixed_endings {
             t.f("status.mixed_eol", &[("eol", &eol)])
@@ -143,6 +153,7 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
         };
         right = right
             .push(hint(app, t.f("status.line_col", &[("line", &line), ("col", &col)])))
+            .push(hint(app, indent))
             .push(hint(app, syntax.to_owned()))
             .push(hint(app, eol))
             .push(hint(app, encoding));

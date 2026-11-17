@@ -1,7 +1,7 @@
 //! # bia-core
 //!
 //! Everything in BIA that does not draw pixels: settings, themes, i18n, the
-//! file tree, document I/O, undo history and language detection.
+//! file tree, document I/O, undo history, indentation and language detection.
 //!
 //! Keeping this crate free of GUI types means it is fast to compile, easy to
 //! test, and would survive a change of UI toolkit untouched.
@@ -12,8 +12,10 @@
 pub mod color;
 pub mod document;
 pub mod fs_ops;
+pub mod fuzzy;
 pub mod history;
 pub mod i18n;
+pub mod indent;
 pub mod language;
 pub mod paths;
 pub mod settings;

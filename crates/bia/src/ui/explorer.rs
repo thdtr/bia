@@ -18,7 +18,7 @@ const WIDTH: f32 = 248.0;
 const INDENT: f32 = 14.0;
 const ICON: f32 = 16.0;
 
-fn icon<'a>(handle: &svg::Handle, color: iced::Color) -> svg::Svg<'a> {
+pub(super) fn icon<'a>(handle: &svg::Handle, color: iced::Color) -> svg::Svg<'a> {
     svg(handle.clone())
         .width(ICON)
         .height(ICON)

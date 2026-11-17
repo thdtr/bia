@@ -16,6 +16,8 @@ use crate::tabs::{Body, Tab, Tabs};
 use crate::ui::{self, layout::Geometry, layout::LARGE_FILE_LINES, style::Colors};
 use bia_core::document::{self, Document, LoadError};
 use bia_core::fs_ops::{self, FsError};
+use bia_core::fuzzy;
+use bia_core::indent::Indent;
 use bia_core::language::{
     self,
     syntect::{highlighting::Theme as SyntaxTheme, parsing::SyntaxSet},
@@ -38,10 +40,18 @@ use std::time::{Duration, Instant};
 pub const EDITOR_ID: &str = "bia-editor";
 pub const PROMPT_ID: &str = "bia-prompt";
 pub const FIND_ID: &str = "bia-find";
+pub const REPLACE_ID: &str = "bia-replace";
+pub const PALETTE_ID: &str = "bia-palette";
 pub const EDITOR_SCROLL_ID: &str = "bia-editor-scroll";
 
 /// Notices fade on the next interaction after this long.
 const NOTICE_TTL: Duration = Duration::from_secs(4);
+
+/// Rows shown by "open file by name".
+pub const PALETTE_ROWS: usize = 12;
+
+/// "Open file by name" stops listing a workspace after this many files.
+const MAX_FILES: usize = 50_000;
 
 pub fn run(paths: Vec<PathBuf>) -> iced::Result {
     iced::application(move || Bia::new(paths.clone()), Bia::update, ui::view)
@@ -82,6 +92,13 @@ pub enum Message {
     LinkClicked(String),
     FindInput(String),
     FindSubmit,
+    ReplaceInput(String),
+    ReplaceOne,
+    ReplaceAll,
+    PaletteInput(String),
+    PaletteSubmit,
+    PalettePick(usize),
+    PaletteClose,
     Shortcut(Shortcut),
     WindowFocused,
     CloseRequested,
@@ -142,6 +159,23 @@ pub struct Find {
     pub query: String,
     pub matches: Vec<Range<usize>>,
     pub current: Option<usize>,
+    /// The replacement text, while the replace field is shown (Ctrl+H).
+    pub replace: Option<String>,
+}
+
+/// The box at the top of the window for Ctrl+P and Ctrl+G.
+pub struct Palette {
+    pub mode: PaletteMode,
+    pub query: String,
+    /// The highlighted row of `results`.
+    pub selected: usize,
+}
+
+pub enum PaletteMode {
+    /// Open a file by name. Paths are relative to the workspace, with `/`.
+    Files { files: Vec<String>, truncated: bool, results: Vec<String> },
+    /// Go to a line of the active file.
+    Line,
 }
 
 pub struct Notice {
@@ -206,6 +240,7 @@ pub struct Bia {
     pub tabs: Tabs,
     pub shelf: Shelf,
     pub find: Option<Find>,
+    pub palette: Option<Palette>,
     pub notice: Option<Notice>,
     pub sidebar: bool,
     pub dialog: Option<Dialog>,
@@ -226,6 +261,7 @@ impl Bia {
             tabs: Tabs::default(),
             shelf: Shelf::Hidden,
             find: None,
+            palette: None,
             notice: None,
             sidebar: true,
             dialog: None,
@@ -240,7 +276,17 @@ impl Bia {
         }
 
         let mut tasks = Vec::new();
-        for path in paths {
+        for arg in paths {
+            // `bia src/main.rs:42:7`, the way compilers print locations.
+            let located = arg.to_str().and_then(|s| {
+                let (file, at) = text::split_location(s);
+                let at = at?;
+                (!arg.exists() && Path::new(file).is_file()).then(|| (PathBuf::from(file), at))
+            });
+            let (path, at) = match located {
+                Some((path, at)) => (path, Some(at)),
+                None => (arg, None),
+            };
             let path =
                 fs::canonicalize(&path).or_else(|_| std::path::absolute(&path)).unwrap_or(path);
             if path.is_dir() {
@@ -255,7 +301,7 @@ impl Bia {
                 app.open_root(parent.to_path_buf());
             }
             if path.is_file() {
-                tasks.push(app.open(path));
+                tasks.push(app.open_at(path, at));
             } else {
                 let reason = fs::metadata(&path).err().map(|e| e.to_string()).unwrap_or_default();
                 let error = format!("{}: {reason}", path.display());
@@ -460,10 +506,36 @@ impl Bia {
             }
 
             Message::FindInput(query) => {
-                self.find = Some(Find { query, matches: Vec::new(), current: None });
+                let replace = self.find.take().and_then(|f| f.replace);
+                self.find = Some(Find { query, matches: Vec::new(), current: None, replace });
                 self.refresh_find();
             }
-            Message::FindSubmit => return self.find_step(true),
+            Message::FindSubmit => return self.find_step(true, true),
+            Message::ReplaceInput(value) => {
+                if let Some(find) = &mut self.find {
+                    find.replace = Some(value);
+                }
+            }
+            Message::ReplaceOne => return self.replace_one(),
+            Message::ReplaceAll => return self.replace_all(),
+
+            Message::PaletteInput(query) => {
+                if let Some(palette) = &mut self.palette {
+                    palette.query = query;
+                }
+                self.refresh_palette();
+            }
+            Message::PaletteSubmit => return self.submit_palette(),
+            Message::PalettePick(index) => {
+                if let Some(palette) = &mut self.palette {
+                    palette.selected = index;
+                }
+                return self.submit_palette();
+            }
+            Message::PaletteClose => {
+                self.palette = None;
+                return operation::focus(EDITOR_ID);
+            }
 
             Message::Shortcut(shortcut) => return self.shortcut(shortcut),
             Message::WindowFocused => self.on_focus(),
@@ -499,18 +571,38 @@ impl Bia {
                 self.refresh_find();
                 return self.follow_cursor();
             }
-            Shortcut::Find => {
+            Shortcut::Find | Shortcut::Replace => {
                 if self.tabs.active().and_then(Tab::buffer).is_some() {
                     let query = self.find.as_ref().map(|f| f.query.clone()).unwrap_or_default();
-                    let _ = self.update(Message::FindInput(query));
-                    return Task::batch([
-                        operation::focus(FIND_ID),
-                        operation::select_all(FIND_ID),
-                    ]);
+                    let _ = self.update(Message::FindInput(query.clone()));
+                    let mut field = FIND_ID;
+                    if shortcut == Shortcut::Replace
+                        && let Some(find) = &mut self.find
+                    {
+                        find.replace.get_or_insert_default();
+                        if !query.is_empty() {
+                            field = REPLACE_ID;
+                        }
+                    }
+                    return Task::batch([operation::focus(field), operation::select_all(field)]);
                 }
             }
-            Shortcut::FindNext => return self.find_step(true),
-            Shortcut::FindPrevious => return self.find_step(false),
+            Shortcut::FindNext => return self.find_step(true, true),
+            Shortcut::FindPrevious => return self.find_step(false, true),
+            Shortcut::QuickOpen => return self.open_palette(true),
+            Shortcut::GoToLine => return self.open_palette(false),
+            Shortcut::Up | Shortcut::Down => {
+                if let Some(palette) = &mut self.palette {
+                    let count = match &palette.mode {
+                        PaletteMode::Files { results, .. } => results.len(),
+                        PaletteMode::Line => 0,
+                    };
+                    palette.selected = match shortcut {
+                        Shortcut::Up => palette.selected.saturating_sub(1),
+                        _ => (palette.selected + 1).min(count.saturating_sub(1)),
+                    };
+                }
+            }
             Shortcut::Preview => return self.update(Message::TogglePreview),
             Shortcut::Sidebar => self.sidebar = !self.sidebar,
             Shortcut::NextTab | Shortcut::PreviousTab => {
@@ -532,6 +624,8 @@ impl Bia {
             Shortcut::Escape => {
                 if self.dialog.is_some() {
                     self.dialog = None;
+                } else if self.palette.is_some() {
+                    return self.update(Message::PaletteClose);
                 } else if !matches!(self.shelf, Shelf::Hidden) {
                     self.shelf = Shelf::Hidden;
                 } else if self.find.is_some() {
@@ -546,6 +640,7 @@ impl Bia {
     // ── Files and tabs ───────────────────────────────────────────────────
 
     fn open_root(&mut self, root: PathBuf) {
+        self.palette = None;
         self.tree = Some(FileTree::new(root, self.settings.hidden.clone()));
         self.selected = None;
         self.shelf = Shelf::Hidden;
@@ -559,7 +654,8 @@ impl Bia {
         let body = match Document::load(&path) {
             Ok(doc) => {
                 let syntax = self.detect_syntax(&path, &doc.text);
-                Body::Text(Buffer::new(doc, syntax))
+                let indent = Indent::for_file(&path, &doc.text, self.settings.tab_size);
+                Body::Text(Buffer::new(doc, syntax, indent))
             }
             Err(LoadError::Binary) => Body::Unsupported(i18n.t("editor.binary").into()),
             Err(LoadError::NotUtf8) => Body::Unsupported(i18n.t("editor.not_utf8").into()),
@@ -578,6 +674,17 @@ impl Bia {
         self.tabs.insert(Tab::new(path, body));
         self.reveal_active();
         Task::batch([operation::focus(EDITOR_ID), self.restore_scroll()])
+    }
+
+    /// Opens `path`, at a 1-based line and column if given.
+    fn open_at(&mut self, path: PathBuf, at: Option<(usize, Option<usize>)>) -> Task<Message> {
+        let task = self.open(path);
+        match at {
+            Some((line, column)) => {
+                self.go_to_line(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1))
+            }
+            None => task,
+        }
     }
 
     /// Keeps the explorer in step with the active tab.
@@ -710,16 +817,22 @@ impl Bia {
         if let Some(tree) = &mut self.tree {
             tree.set_hidden(settings.hidden.clone());
         }
-        // Grammars may have been added or removed: detect every file again.
-        let syntaxes: Vec<(usize, String)> = self
+        // Grammars may have been added or removed, and `tab_size` may have
+        // changed: detect every file again.
+        let detected: Vec<(usize, String, Indent)> = self
             .tabs
             .iter()
             .enumerate()
-            .filter_map(|(i, t)| Some((i, self.detect_syntax(&t.path, t.buffer()?.text()))))
+            .filter_map(|(i, t)| {
+                let text = t.buffer()?.text();
+                let indent = Indent::for_file(&t.path, text, settings.tab_size);
+                Some((i, self.detect_syntax(&t.path, text), indent))
+            })
             .collect();
-        for (i, syntax) in syntaxes {
+        for (i, syntax, indent) in detected {
             if let Some(buffer) = self.tabs.get_mut(i).and_then(Tab::buffer_mut) {
                 buffer.syntax = syntax;
+                buffer.indent = indent;
             }
         }
         self.settings = settings;
@@ -784,6 +897,28 @@ impl Bia {
             return Task::none();
         }
         operation::scroll_to(EDITOR_SCROLL_ID, AbsoluteOffset { x, y })
+    }
+
+    /// Moves the cursor to a 0-based line and column of the active file and
+    /// scrolls so that line sits in the middle of the editor.
+    fn go_to_line(&mut self, line: usize, column: usize) -> Task<Message> {
+        let geometry = self.look.geometry;
+        let (width, height) =
+            self.editor_viewport.map_or((800.0, 600.0), |v| (v.bounds().width, v.bounds().height));
+        let Some(tab) = self.tabs.active_mut() else { return Task::none() };
+        let Some(buffer) = tab.buffer_mut() else { return Task::none() };
+        buffer.go_to(line, column);
+        let cursor = (buffer.cursor_pos().line, buffer.cursor_columns());
+        let (x, _) = geometry.reveal(cursor, buffer.line_count, (0.0, 0.0), (width, height));
+        let offset = AbsoluteOffset { x: x.unwrap_or(0.0), y: geometry.centered(cursor.0, height) };
+        tab.scroll = offset;
+        Task::batch([
+            operation::focus(EDITOR_ID),
+            operation::scroll_to(
+                EDITOR_SCROLL_ID,
+                AbsoluteOffset { x: Some(offset.x), y: Some(offset.y) },
+            ),
+        ])
     }
 
     /// Every tab shares one scroll area, so switching tabs restores the
@@ -937,8 +1072,11 @@ impl Bia {
         find.current = find.current.filter(|&i| i < find.matches.len());
     }
 
-    fn find_step(&mut self, forward: bool) -> Task<Message> {
-        let Some(query) = self.find.as_ref().map(|f| f.query.clone()) else { return Task::none() };
+    /// Selects the next (or previous) match. `to_editor` moves the focus to
+    /// the editor; replacing keeps it in the replace field instead.
+    fn find_step(&mut self, forward: bool, to_editor: bool) -> Task<Message> {
+        let Some(find) = &self.find else { return Task::none() };
+        let (query, replace) = (find.query.clone(), find.replace.clone());
         let previous = self.find.as_ref().and_then(|f| f.current);
         let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
         let matches = text::find_all(buffer.text(), &query);
@@ -954,13 +1092,128 @@ impl Bia {
         if let Some(i) = current {
             buffer.select(matches[i].clone());
         }
-        self.find = Some(Find { query, matches, current });
-        if current.is_some() {
-            Task::batch([operation::focus(EDITOR_ID), self.follow_cursor()])
-        } else {
-            Task::none()
+        self.find = Some(Find { query, matches, current, replace });
+        match (current, to_editor) {
+            (None, _) => Task::none(),
+            (Some(_), true) => Task::batch([operation::focus(EDITOR_ID), self.follow_cursor()]),
+            (Some(_), false) => self.follow_cursor(),
         }
     }
+
+    /// Replaces the selected match, then selects the next one. The first
+    /// press only selects a match, so you see what will change.
+    fn replace_one(&mut self) -> Task<Message> {
+        let Some(find) = &self.find else { return Task::none() };
+        let with = find.replace.clone().unwrap_or_default();
+        let target = find.current.and_then(|i| find.matches.get(i).cloned());
+        if let (Some(range), Some(buffer)) = (target, self.active_buffer_mut())
+            && buffer.selection_range().as_ref() == Some(&range)
+        {
+            buffer.replace_range(range, &with);
+            self.refresh_find();
+        }
+        self.find_step(true, false)
+    }
+
+    fn replace_all(&mut self) -> Task<Message> {
+        let Some(find) = &self.find else { return Task::none() };
+        let (query, with) = (find.query.clone(), find.replace.clone().unwrap_or_default());
+        let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
+        let ranges = text::find_all(buffer.text(), &query);
+        if ranges.is_empty() {
+            return Task::none();
+        }
+        buffer.replace_all(&ranges, &with);
+        self.refresh_find();
+        if let Some(find) = &mut self.find {
+            find.current = None;
+        }
+        let text = self.look.i18n.f("find.replaced", &[("count", &ranges.len())]);
+        self.info(text);
+        self.follow_cursor()
+    }
+
+    // ── Open file by name, go to line ────────────────────────────────────
+
+    fn open_palette(&mut self, files: bool) -> Task<Message> {
+        let mode = if files {
+            let Some(tree) = &self.tree else { return Task::none() };
+            let (files, truncated) =
+                tree::list_files(tree.root(), &self.settings.hidden, MAX_FILES);
+            PaletteMode::Files { files, truncated, results: Vec::new() }
+        } else {
+            if self.tabs.active().and_then(Tab::buffer).is_none() {
+                return Task::none();
+            }
+            PaletteMode::Line
+        };
+        self.palette = Some(Palette { mode, query: String::new(), selected: 0 });
+        self.shelf = Shelf::Hidden;
+        self.refresh_palette();
+        operation::focus(PALETTE_ID)
+    }
+
+    /// Ranks the files again after the query changed. With no query, the
+    /// other open files are listed, so Ctrl+P, Enter goes back and forth.
+    fn refresh_palette(&mut self) {
+        let root = self.tree.as_ref().map(|t| t.root().to_path_buf());
+        let active = self.tabs.active_index();
+        let open: Vec<String> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != active)
+            .filter_map(|(_, t)| relative_path(root.as_deref()?, &t.path))
+            .collect();
+        let Some(palette) = &mut self.palette else { return };
+        palette.selected = 0;
+        let PaletteMode::Files { files, results, .. } = &mut palette.mode else { return };
+        let (name, _) = text::split_location(&palette.query);
+        *results = if name.trim().is_empty() {
+            open.into_iter().take(PALETTE_ROWS).collect()
+        } else {
+            fuzzy::rank(name, files, PALETTE_ROWS).into_iter().map(|i| files[i].clone()).collect()
+        };
+    }
+
+    fn submit_palette(&mut self) -> Task<Message> {
+        let Some(palette) = &self.palette else { return Task::none() };
+        let (line, column) = match &palette.mode {
+            // `42` or `42:7`
+            PaletteMode::Line => {
+                let query = palette.query.trim();
+                let (line, column) =
+                    query.split_once(':').map_or((query, None), |(l, c)| (l, Some(c)));
+                let Ok(line) = line.trim().parse::<usize>() else { return Task::none() };
+                let column = column.and_then(|c| c.trim().parse().ok());
+                (line, column)
+            }
+            // A file, maybe with `:line:column`, or just `:line` for the open file.
+            PaletteMode::Files { results, .. } => {
+                let (name, at) = text::split_location(&palette.query);
+                let file = results.get(palette.selected).cloned();
+                match (file, at) {
+                    (Some(file), at) => {
+                        let Some(root) = self.tree.as_ref().map(|t| t.root().to_path_buf()) else {
+                            return Task::none();
+                        };
+                        self.palette = None;
+                        return self.open_at(root.join(file), at);
+                    }
+                    (None, Some(at)) if name.trim().is_empty() => at,
+                    (None, _) => return Task::none(),
+                }
+            }
+        };
+        self.palette = None;
+        self.go_to_line(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1))
+    }
+}
+
+/// `path` relative to `root`, with `/` separators, if it's inside it.
+fn relative_path(root: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(root).ok()?;
+    Some(relative.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>().join("/"))
 }
 
 async fn pick_folder(start: Option<PathBuf>) -> Option<PathBuf> {

@@ -6,7 +6,7 @@ BIA is two Rust crates, a folder of assets and two scripts that generate some of
 bia/
 ├── crates/
 │   ├── bia-core/        no GUI: settings, themes, i18n, tree, documents, history,
-│   │   │                languages, file operations (fs_ops)
+│   │   │                languages, file operations (fs_ops), indentation, fuzzy match
 │   │   └── tests/sealed.rs   fails the build if network code appears
 │   └── bia/             the iced application
 │       ├── build.rs        embeds the icon in bia.exe (Windows only)
@@ -110,7 +110,10 @@ few things an editor can't really do without:
 | Feature | Why |
 |---|---|
 | Undo and redo, grouped by word | iced's editor doesn't have undo. |
-| Find (`Ctrl+F`, `F3`) | You need to search inside a file. |
+| Find and replace (`Ctrl+F`, `Ctrl+H`) | You need to search inside a file, and renaming by hand is slow. |
+| Indentation that follows the file | iced's editor always indents with 8 spaces, and Enter goes back to column 0. BIA detects tabs or spaces and the width, keeps the indent on Enter and adds a level after `{`, `[` or `(`. |
+| Open file by name (`Ctrl+P`) | In a real project, the tree alone is too slow. |
+| Go to line (`Ctrl+G`, `bia file:line`) | Compilers, stack traces and CI logs point to lines. |
 | Tabs | You usually work on more than one file. |
 | Unsaved changes warnings | A dot on the tab, and a question before closing or quitting. |
 | Atomic saves, line endings and BOM kept | Saving never corrupts a file or turns every line into a diff. |
@@ -133,6 +136,8 @@ few things an editor can't really do without:
   more common one. The status bar says so before you save.
 * **Bare CR line breaks aren't supported.** The editor widget treats `\r` as a line
   break and BIA's copy of the text doesn't, so these files aren't opened.
+* **Tabs are drawn 8 columns wide.** iced doesn't let BIA change that. `tab_size` only
+  sets what the Tab key inserts.
 * **Each keystroke compares the whole text.** That's a byte comparison of at most
   16 MB, which you won't notice, and it keeps the undo code simple.
 

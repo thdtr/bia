@@ -38,6 +38,13 @@ impl Geometry {
         EDITOR_PADDING.left + EDITOR_PADDING.right + (max_columns + 2) as f32 * self.char_width
     }
 
+    /// The vertical scroll that puts `line` in the middle of a view `height`
+    /// tall.
+    pub fn centered(&self, line: usize, height: f32) -> f32 {
+        let y = EDITOR_PADDING.top + line as f32 * self.line + self.line / 2.0;
+        (y - height / 2.0).max(0.0)
+    }
+
     /// The smallest scroll that brings the cursor into view, per axis.
     /// `None` on an axis means it is already visible there.
     ///
@@ -101,6 +108,13 @@ mod tests {
         // Back at column 0 after scrolling right: scroll back.
         let (x, _) = G.reveal((0, 0), 100, (900.0, 0.0), (800.0, 600.0));
         assert_eq!(x, Some(0.0));
+    }
+
+    #[test]
+    fn centers_a_line() {
+        assert_eq!(G.centered(0, 600.0), 0.0);
+        // Line 100's middle is at 14 + 2000 + 10; half the view above it.
+        assert_eq!(G.centered(100, 600.0), 14.0 + 2010.0 - 300.0);
     }
 
     #[test]

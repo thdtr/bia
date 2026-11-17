@@ -30,7 +30,7 @@ irm https://raw.githubusercontent.com/thdtr/bia/main/install.ps1 | iex
 ```
 
 Não precisa de administrador. Abra o BIA pelo menu de aplicativos ou rode
-`bia ~/codigo/projeto`.
+`bia ~/codigo/projeto`. `bia src/main.rs:42` abre o arquivo na linha 42.
 
 Também dá para baixar pela página de [releases](https://github.com/thdtr/bia/releases)
 ou rodar `cargo install --git https://github.com/thdtr/bia bia`. Para desinstalar,
@@ -51,7 +51,9 @@ Com os comandos de instalação acima, esse aviso não aparece.
 
 - Árvore de arquivos com uma pasta por linha
 - Destaque de sintaxe para umas 200 linguagens, e outras com um arquivo `.sublime-syntax` ([veja como](docs/LANGUAGES.md))
-- Números de linha, abas, busca, desfazer e refazer
+- Números de linha, abas, buscar e substituir, desfazer e refazer
+- Abrir arquivo pelo nome, ir para uma linha
+- Indentação que segue cada arquivo: tabs ou espaços, e quantos
 - Prévia de Markdown ao vivo
 - Temas claro e escuro, ou o seu em JSON ([veja como](docs/THEMES.md))
 - Português e inglês
@@ -69,7 +71,10 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `Ctrl+O` | Abrir pasta |
 | `Ctrl+S` | Salvar |
 | `Ctrl+W` | Fechar aba |
+| `Ctrl+P` | Abrir arquivo pelo nome |
+| `Ctrl+G` | Ir para linha |
 | `Ctrl+F` / `F3` | Buscar / próximo resultado |
+| `Ctrl+H` | Substituir |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Desfazer / refazer |
 | `Ctrl+Shift+V` | Prévia de Markdown |
 | `Ctrl+B` | Mostrar ou esconder a barra lateral |
@@ -77,7 +82,7 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `F2` / `Delete` | Renomear / mandar para a lixeira |
 | `Ctrl+,` | Configurações |
 
-No Mac, use `Cmd`.
+No Mac, use `Cmd`. Substituir é `Cmd+Alt+F`.
 
 ## Configurações
 
@@ -88,6 +93,7 @@ No Mac, use `Cmd`.
   "font_family": "Fira Code",
   "font_size": 14,
   "line_height": 1.55,
+  "tab_size": 4,
   "ui_font_family": "Fira Sans",
   "ui_font_size": 13,
   "theme": "noite",
@@ -99,6 +105,8 @@ No Mac, use `Cmd`.
 `font_*` vale para o editor e `ui_font_*` para a interface. O BIA já vem com as
 fontes Fira Sans e Fira Code, mas aceita qualquer fonte instalada. `theme` pode ser
 `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou `pt-BR`. `hidden` lista os nomes que a árvore não mostra.
+`tab_size` é a largura da indentação em arquivos que ainda não têm nenhuma. Os que já
+têm mantêm a deles.
 
 ## Licença
 

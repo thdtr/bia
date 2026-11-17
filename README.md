@@ -29,6 +29,7 @@ irm https://raw.githubusercontent.com/thdtr/bia/main/install.ps1 | iex
 ```
 
 No admin rights needed. Open BIA from your app menu, or run `bia ~/code/project`.
+`bia src/main.rs:42` opens a file at line 42.
 
 You can also grab a build from [releases](https://github.com/thdtr/bia/releases) or run
 `cargo install --git https://github.com/thdtr/bia bia`. To uninstall, add `--uninstall`
@@ -49,7 +50,9 @@ The install commands above don't trigger this warning.
 
 - File tree with one folder per line
 - Highlighting for ~200 languages, plus any `.sublime-syntax` file you add ([how](docs/LANGUAGES.md))
-- Line numbers, tabs, find, undo and redo
+- Line numbers, tabs, find and replace, undo and redo
+- Open a file by name, go to a line
+- Indentation that follows each file: tabs or spaces, and how many
 - Live Markdown preview
 - Dark and light themes, or your own in JSON ([how](docs/THEMES.md))
 - English and Portuguese
@@ -67,7 +70,10 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `Ctrl+O` | Open folder |
 | `Ctrl+S` | Save |
 | `Ctrl+W` | Close tab |
+| `Ctrl+P` | Open file by name |
+| `Ctrl+G` | Go to line |
 | `Ctrl+F` / `F3` | Find / next match |
+| `Ctrl+H` | Replace |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+Shift+V` | Markdown preview |
 | `Ctrl+B` | Toggle sidebar |
@@ -75,7 +81,7 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `F2` / `Delete` | Rename / move to trash |
 | `Ctrl+,` | Settings |
 
-On a Mac, use `Cmd`.
+On a Mac, use `Cmd`. Replace is `Cmd+Alt+F`.
 
 ## Settings
 
@@ -86,6 +92,7 @@ On a Mac, use `Cmd`.
   "font_family": "Fira Code",
   "font_size": 14,
   "line_height": 1.55,
+  "tab_size": 4,
   "ui_font_family": "Fira Sans",
   "ui_font_size": 13,
   "theme": "noite",
@@ -98,6 +105,8 @@ On a Mac, use `Cmd`.
 and Fira Code, but any installed font works.
 `theme` is `noite`, `dia` or one of yours. `language` is `auto`, `en` or `pt-BR`.
 `hidden` lists names the file tree skips.
+`tab_size` is the indent width for files with no indentation yet. Files that have
+some keep their own.
 
 ## License
 

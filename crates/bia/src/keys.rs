@@ -7,6 +7,9 @@
 //! | Ctrl+W                | Close tab                  |
 //! | Ctrl+Z / Ctrl+Shift+Z | Undo / redo (also Ctrl+Y)  |
 //! | Ctrl+F, F3, Shift+F3  | Find, next, previous       |
+//! | Ctrl+H                | Replace (macOS: Cmd+Alt+F) |
+//! | Ctrl+P                | Open file by name          |
+//! | Ctrl+G                | Go to line                 |
 //! | Ctrl+Shift+V          | Markdown preview           |
 //! | Ctrl+B                | Toggle sidebar             |
 //! | Ctrl+Tab              | Next tab (Shift: previous) |
@@ -31,6 +34,9 @@ pub enum Shortcut {
     Find,
     FindNext,
     FindPrevious,
+    Replace,
+    QuickOpen,
+    GoToLine,
     Preview,
     Sidebar,
     NextTab,
@@ -42,7 +48,12 @@ pub enum Shortcut {
     Delete,
     Escape,
     Confirm,
+    /// Arrow keys nothing else used: they move through lists.
+    Up,
+    Down,
 }
+
+const MAC: bool = cfg!(target_os = "macos");
 
 pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortcut> {
     use Shortcut::*;
@@ -59,6 +70,8 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
             Named::Delete if !cmd => Some(Delete),
             Named::Tab if mods.control() && shift => Some(PreviousTab),
             Named::Tab if mods.control() => Some(NextTab),
+            Named::ArrowUp => Some(Up),
+            Named::ArrowDown => Some(Down),
             _ => None,
         };
     }
@@ -73,7 +86,12 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         'z' if shift => Redo,
         'z' => Undo,
         'y' => Redo,
+        // Cmd+H hides the app on macOS, so Replace is Cmd+Alt+F there.
+        'f' if MAC && mods.alt() => Replace,
+        'h' if !MAC => Replace,
         'f' => Find,
+        'p' => QuickOpen,
+        'g' => GoToLine,
         'v' if shift => Preview,
         'b' => Sidebar,
         ',' => Settings,
@@ -149,6 +167,14 @@ mod tests {
         assert_eq!(press("s", Code::KeyS, Modifiers::COMMAND), Some(Shortcut::Save));
         assert_eq!(press("z", Code::KeyZ, Modifiers::COMMAND), Some(Shortcut::Undo));
         assert_eq!(press(",", Code::Comma, Modifiers::COMMAND), Some(Shortcut::Settings));
+        assert_eq!(press("p", Code::KeyP, Modifiers::COMMAND), Some(Shortcut::QuickOpen));
+        assert_eq!(press("g", Code::KeyG, Modifiers::COMMAND), Some(Shortcut::GoToLine));
+        let replace = if MAC {
+            press("f", Code::KeyF, Modifiers::COMMAND | Modifiers::ALT)
+        } else {
+            press("h", Code::KeyH, Modifiers::COMMAND)
+        };
+        assert_eq!(replace, Some(Shortcut::Replace));
         // Typing letters without Ctrl is never a shortcut.
         assert_eq!(press("s", Code::KeyS, Modifiers::empty()), None);
         assert_eq!(press("S", Code::KeyS, Modifiers::SHIFT), None);

@@ -24,6 +24,9 @@ pub struct Settings {
     pub ui_font_size: f32,
     /// Line height, relative to `font_size`.
     pub line_height: f32,
+    /// Spaces per indentation level in files that aren't indented yet.
+    /// Files that already are keep their own style.
+    pub tab_size: usize,
     /// Theme id: the file name (without `.json`) of a built-in or custom theme.
     pub theme: String,
     /// `"auto"`, `"en"` or `"pt-BR"`.
@@ -40,6 +43,7 @@ impl Default for Settings {
             ui_font_family: "Fira Sans".into(),
             ui_font_size: 13.0,
             line_height: 1.55,
+            tab_size: 4,
             theme: "noite".into(),
             language: "auto".into(),
             hidden: [".git", ".hg", ".svn", ".DS_Store", "Thumbs.db", "node_modules", "target"]
@@ -109,6 +113,7 @@ impl Settings {
         self.font_size = clamp(self.font_size, 6.0, 72.0, d.font_size);
         self.ui_font_size = clamp(self.ui_font_size, 8.0, 32.0, d.ui_font_size);
         self.line_height = clamp(self.line_height, 1.0, 3.0, d.line_height);
+        self.tab_size = self.tab_size.clamp(1, 8);
         if self.font_family.trim().is_empty() {
             self.font_family = d.font_family;
         }
@@ -139,9 +144,12 @@ mod tests {
 
     #[test]
     fn clamps_nonsense() {
-        let s =
-            Settings::from_json(r#"{ "font_size": 900, "line_height": 0, "theme": " " }"#).unwrap();
+        let s = Settings::from_json(
+            r#"{ "font_size": 900, "line_height": 0, "theme": " ", "tab_size": 0 }"#,
+        )
+        .unwrap();
         assert_eq!(s.font_size, 72.0);
+        assert_eq!(s.tab_size, 1);
         assert_eq!(s.line_height, 1.0);
         assert_eq!(s.theme, "noite");
     }

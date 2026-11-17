@@ -6,6 +6,17 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Indentation follows each file. BIA detects tabs or spaces and the width, keeps the
+  indent when you press Enter and adds a level after `{`, `[` or `(`. Tab and
+  Shift+Tab indent the selected lines, and Backspace in leading spaces removes one
+  level. Files with no indentation yet use `tab_size` from the settings (tabs for Go
+  and Makefiles). The status bar shows which one a file uses.
+- Replace (`Ctrl+H`, or `Cmd+Alt+F` on macOS), one match at a time or all at once.
+- Open a file by name with `Ctrl+P`. Add `:line` to jump to a line.
+- Go to line with `Ctrl+G`, and `bia file:line:column` on the command line.
+
 ### Changed
 
 - Syntax definitions updated to the set from `bat` 0.26 (two-face 0.5).

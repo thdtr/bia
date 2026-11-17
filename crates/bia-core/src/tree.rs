@@ -145,6 +145,43 @@ fn compare(a: &Row, b: &Row) -> Ordering {
         .then_with(|| a.name.cmp(&b.name))
 }
 
+/// Every file under `root`, as paths relative to it with `/` separators,
+/// sorted. Skips `hidden` names and doesn't follow links to folders (they
+/// can loop). Stops after `limit` files; the flag says whether it did.
+pub fn list_files(root: &Path, hidden: &[String], limit: usize) -> (Vec<String>, bool) {
+    let mut files = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if is_hidden(&name, hidden) {
+                continue;
+            }
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            // A link to a file counts; a link to a folder is skipped.
+            if kind.is_symlink() && !fs::metadata(&path).is_ok_and(|m| m.is_file()) {
+                continue;
+            }
+            if files.len() == limit {
+                files.sort();
+                return (files, true);
+            }
+            if let Ok(relative) = path.strip_prefix(root) {
+                let parts: Vec<_> = relative.iter().map(|p| p.to_string_lossy()).collect();
+                files.push(parts.join("/"));
+            }
+        }
+    }
+    files.sort();
+    (files, false)
+}
+
 /// `name` matches when equal to a pattern, or when the pattern is `*.ext`
 /// and the name ends with `.ext`.
 pub fn is_hidden(name: &str, patterns: &[String]) -> bool {
@@ -213,6 +250,25 @@ mod tests {
         let mut tree = FileTree::new(&root, vec![]);
         tree.reveal(&root.join("a/b/c.rs"));
         assert!(tree.rows().iter().any(|r| r.name == "c.rs" && r.depth == 2));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn lists_files_recursively() {
+        let root = scratch("list");
+        fs::create_dir_all(root.join("src/ui")).unwrap();
+        fs::create_dir_all(root.join("target/debug")).unwrap();
+        fs::write(root.join("src/ui/mod.rs"), "").unwrap();
+        fs::write(root.join("src/main.rs"), "").unwrap();
+        fs::write(root.join("target/debug/bia"), "").unwrap();
+        fs::write(root.join("README.md"), "").unwrap();
+        let hidden = vec!["target".to_string()];
+        let (files, truncated) = list_files(&root, &hidden, 100);
+        assert_eq!(files, ["README.md", "src/main.rs", "src/ui/mod.rs"]);
+        assert!(!truncated);
+        let (files, truncated) = list_files(&root, &hidden, 2);
+        assert_eq!(files.len(), 2);
+        assert!(truncated);
         let _ = fs::remove_dir_all(&root);
     }
 

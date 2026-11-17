@@ -2,7 +2,7 @@
 
 use super::layout::{EDITOR_PADDING, GUTTER_PADDING};
 use super::{hint, label, logo, style};
-use crate::app::{Bia, EDITOR_ID, EDITOR_SCROLL_ID, FIND_ID, Message};
+use crate::app::{Bia, EDITOR_ID, EDITOR_SCROLL_ID, FIND_ID, Message, REPLACE_ID};
 use crate::buffer::Buffer;
 use crate::highlighter::Highlighter;
 use crate::keys;
@@ -116,27 +116,48 @@ fn find_bar(app: &Bia) -> Element<'_, Message> {
         (total, Some(i)) => t.f("find.count", &[("current", &(i + 1)), ("total", &total)]),
         (total, None) => t.f("find.count", &[("current", &"–"), ("total", &total)]),
     };
-    container(
+    let field = |placeholder: &str, value: &str, id: &'static str| {
+        text_input(placeholder, value)
+            .id(id)
+            .font(app.look.ui_font)
+            .size(app.settings.ui_font_size)
+            .padding([4, 8])
+            .width(Length::Fixed(260.0))
+            .style(style::input(c))
+    };
+    let mut rows = column![
         row![
             space::horizontal(),
             hint(app, status),
-            text_input(t.t("find.placeholder"), &find.query)
-                .id(FIND_ID)
+            field(t.t("find.placeholder"), &find.query, FIND_ID)
                 .on_input(Message::FindInput)
-                .on_submit(Message::FindSubmit)
-                .font(app.look.ui_font)
-                .size(app.settings.ui_font_size)
-                .padding([4, 8])
-                .width(Length::Fixed(260.0))
-                .style(style::input(c)),
+                .on_submit(Message::FindSubmit),
         ]
         .spacing(12)
-        .align_y(Alignment::Center),
-    )
-    .padding([6, 12])
-    .width(Fill)
-    .style(style::surface(c.background, c.text))
-    .into()
+        .align_y(Alignment::Center)
+    ]
+    .spacing(6);
+    if let Some(replace) = &find.replace {
+        let action = |key: &str, message: Message| {
+            button(hint(app, t.t(key).to_owned()).color(c.text))
+                .padding([3, 10])
+                .style(style::outlined(c, false))
+                .on_press(message)
+        };
+        rows = rows.push(
+            row![
+                space::horizontal(),
+                action("find.replace", Message::ReplaceOne),
+                action("find.replace_all", Message::ReplaceAll),
+                field(t.t("find.replace_placeholder"), replace, REPLACE_ID)
+                    .on_input(Message::ReplaceInput)
+                    .on_submit(Message::ReplaceOne),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        );
+    }
+    container(rows).padding([6, 12]).width(Fill).style(style::surface(c.background, c.text)).into()
 }
 
 fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a, Message> {
