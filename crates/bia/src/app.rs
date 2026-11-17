@@ -122,6 +122,8 @@ pub enum Message {
     TermResize(crate::terminal::Size),
     ToggleTerminal,
     RowPressed(PathBuf),
+    /// The file tree scrolled: offset and height of what's in sight.
+    TreeScrolled(f32, f32),
     RowContext(PathBuf),
     ToggleShelf,
     Shelf(ShelfAction),
@@ -362,6 +364,9 @@ pub struct Bia {
     pub settings: Settings,
     pub look: Look,
     pub tree: Option<FileTree>,
+    /// Where the file tree is scrolled and how tall it is, to build only
+    /// the rows in sight.
+    pub tree_viewport: (f32, f32),
     pub selected: Option<PathBuf>,
     pub tabs: Tabs,
     pub shelf: Shelf,
@@ -417,6 +422,8 @@ impl Bia {
             settings,
             look,
             tree: None,
+            // Until the sidebar reports its size, as much as a tall window shows.
+            tree_viewport: (0.0, 1_200.0),
             selected: None,
             tabs: Tabs::default(),
             shelf: Shelf::Hidden,
@@ -597,6 +604,7 @@ impl Bia {
                 return self.write_backups();
             }
 
+            Message::TreeScrolled(offset, height) => self.tree_viewport = (offset, height),
             Message::RowPressed(path) => {
                 self.selected = Some(path.clone());
                 if path.is_dir() {

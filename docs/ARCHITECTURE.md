@@ -106,6 +106,8 @@ keyboard / mouse ──► iced ──► Message ──► Bia::update ──�
   Selections, the current line, search matches and the bracket pair are rectangles
   under the text; cursors are drawn over it. The widget scrolls by itself, follows
   the cursor and remembers each tab's place.
+  The view is rebuilt after every message, so the file tree, which can have
+  thousands of rows, only builds the ones in sight (`ui/explorer.rs`).
 * **Highlighting.** `syntax.rs` keeps syntect's state every 16 lines, and the styles of
   lines already drawn with the state each one started from. An edit sets aside what
   comes after the changed lines (the editor logs them), moved to where it is now;

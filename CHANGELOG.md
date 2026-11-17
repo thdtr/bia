@@ -20,6 +20,9 @@ Notable changes to BIA are listed here. The format is based on
 - Highlighting no longer parses everything below the line you edit again. Lines below
   keep their colors unless the edit changes them, as opening a comment does. Typing in
   the middle of the screen in a 200,000-line file went from 20 ms of work per key to 13.
+- The file tree builds only the rows in sight. With 3,000 rows open, a keystroke went
+  from 28 ms of work to 7, the same as with a small tree, and the window uses about
+  25 MB less.
 - Backups are written in the background instead of while you type.
 - `Ctrl+P` lists the folder in the background and remembers the list, so it no longer
   freezes the window in big folders. Ranking 50,000 paths takes 3 ms instead of 18.

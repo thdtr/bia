@@ -3,6 +3,10 @@
 //! Folders get a chevron and a folder icon; files get an icon for their kind
 //! (see `icons.rs`). Icons are tinted with the theme's muted color, and the
 //! file open in the editor is tinted with the accent.
+//!
+//! The view is rebuilt after every message, keys typed in the editor
+//! included, so only the rows in sight (and a few around them) become
+//! widgets. Rows all have the same height; empty space stands for the rest.
 
 use super::{hint, label, style};
 use crate::app::{Bia, Message, PROMPT_ID, Prompt, PromptKind, Shelf, ShelfAction};
@@ -17,6 +21,26 @@ use iced::{Alignment, Element, Fill, Length, Padding};
 pub(super) const WIDTH: f32 = 248.0;
 const INDENT: f32 = 14.0;
 const ICON: f32 = 16.0;
+/// Rows built above and below the ones in sight, so a quick scroll doesn't
+/// show empty space before the next view.
+const OVERSCAN: usize = 20;
+
+/// The height of every row: the taller of the icon and a line of text,
+/// plus the padding.
+fn row_height(app: &Bia) -> f32 {
+    (app.settings.ui_font_size * 1.3).max(ICON) + 6.0
+}
+
+/// The rows to build, out of `count`, for the sidebar scrolled to
+/// `offset` and `height` tall.
+fn visible(count: usize, row: f32, offset: f32, height: f32) -> std::ops::Range<usize> {
+    let in_sight = (height / row).ceil() as usize + 1;
+    if count <= in_sight {
+        return 0..count;
+    }
+    let first = ((offset / row).floor() as usize).min(count - in_sight);
+    first.saturating_sub(OVERSCAN)..(first + in_sight + OVERSCAN).min(count)
+}
 
 pub(super) fn icon<'a>(handle: &svg::Handle, color: iced::Color) -> svg::Svg<'a> {
     svg(handle.clone())
@@ -42,7 +66,11 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     .height(Length::Fixed(38.0));
 
     let open_file = app.tabs.active().map(|t| t.path.as_path());
-    let rows = tree.rows().iter().map(|entry| {
+    let height = row_height(app);
+    let all = tree.rows();
+    let (offset, in_sight) = app.tree_viewport;
+    let shown = visible(all.len(), height, offset, in_sight);
+    let rows = all[shown.clone()].iter().map(|entry| {
         let selected = app.selected.as_deref() == Some(entry.path.as_path());
         let is_open = open_file == Some(entry.path.as_path());
         let (chevron, kind_icon) = match (entry.is_dir, entry.expanded) {
@@ -73,18 +101,25 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
 
         let press = button(content)
             .width(Fill)
+            .height(height)
             .padding(Padding { top: 3.0, bottom: 3.0, left: 8.0, right: 8.0 })
             .style(style::row(c, selected))
             .on_press(Message::RowPressed(entry.path.clone()));
         mouse_area(press).on_right_press(Message::RowContext(entry.path.clone())).into()
     });
-    let list: Element<'_, Message> = if tree.rows().is_empty() {
+    let list: Element<'_, Message> = if all.is_empty() {
         container(hint(app, app.look.i18n.t("explorer.empty"))).padding([4, 14]).into()
     } else {
-        Column::with_children(rows).into()
+        let above = space().height(height * shown.start as f32);
+        let below = space().height(height * (all.len() - shown.end) as f32);
+        Column::new().push(above).extend(rows).push(below).into()
     };
+    let list = scrollable(list)
+        .height(Fill)
+        .style(style::scroll(c))
+        .on_scroll(|v| Message::TreeScrolled(v.absolute_offset().y, v.bounds().height));
 
-    let mut sidebar = column![header, scrollable(list).height(Fill).style(style::scroll(c)),];
+    let mut sidebar = column![header, list];
     if let Some(shelf) = shelf(app) {
         sidebar = sidebar.push(rule::horizontal(1).style(style::rule(c))).push(shelf);
     }
@@ -188,4 +223,20 @@ fn prompt_view<'a>(app: &'a Bia, prompt: &'a Prompt) -> Element<'a, Message> {
         None => content.push(hint(app, t.t("prompt.hint"))),
     };
     content.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::visible;
+
+    #[test]
+    fn builds_the_rows_in_sight() {
+        // Everything fits.
+        assert_eq!(visible(10, 20.0, 0.0, 400.0), 0..10);
+        // 3,000 rows, 21 in sight from row 1,000.
+        assert_eq!(visible(3_000, 20.0, 20_000.0, 400.0), 980..1_041);
+        assert_eq!(visible(3_000, 20.0, 0.0, 400.0), 0..41);
+        // A scroll left over from a longer list stays at its end.
+        assert_eq!(visible(100, 20.0, 50_000.0, 400.0), 59..100);
+    }
 }
