@@ -14,6 +14,7 @@ pub mod backup;
 pub mod color;
 pub mod document;
 pub mod editing;
+pub mod editor;
 pub mod fs_ops;
 pub mod fuzzy;
 pub mod history;

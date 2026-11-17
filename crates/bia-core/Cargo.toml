@@ -26,6 +26,14 @@ regex = "1"
 # Walks a folder the way git sees it (.gitignore, .ignore, global excludes),
 # for "open file by name" and "find in files". From ripgrep; no C code.
 ignore = "0.4"
+# The text of an open file. Edits anywhere cost the same in a 16 MB file
+# as in a small one. Without `unicode_lines`, only `\n` breaks a line, as
+# everywhere else in BIA.
+ropey = { version = "1.6", default-features = false, features = ["simd"] }
+# Cursor motion by grapheme (é, emoji, flags are one step) and by word.
+unicode-segmentation = "1"
+# How many columns a character takes: 2 for CJK and most emoji.
+unicode-width = "0.2"
 
 [lints]
 workspace = true
