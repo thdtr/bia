@@ -27,8 +27,24 @@ On macOS, most shortcuts use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd>. The tab
 | Indent selected lines | <kbd>Tab</kbd> | <kbd>Tab</kbd> |
 | Unindent selected lines | <kbd>Shift+Tab</kbd> | <kbd>⇧Tab</kbd> |
 | Go to line | <kbd>Ctrl+G</kbd> | <kbd>⌘G</kbd> |
+| Comment or uncomment lines | <kbd>Ctrl+/</kbd> | <kbd>⌘/</kbd> |
+| Move lines up or down | <kbd>Alt+↑</kbd> / <kbd>Alt+↓</kbd> | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> |
+| Duplicate lines | <kbd>Shift+Alt+↑</kbd> / <kbd>Shift+Alt+↓</kbd> | <kbd>⇧⌥↑</kbd> / <kbd>⇧⌥↓</kbd> |
+| Delete lines | <kbd>Ctrl+Shift+K</kbd> | <kbd>⌘⇧K</kbd> |
+| Select line | <kbd>Ctrl+L</kbd> | <kbd>⌘L</kbd> |
+| Delete a word | <kbd>Ctrl+Backspace</kbd> / <kbd>Ctrl+Delete</kbd> | <kbd>⌥⌫</kbd> / <kbd>⌥⌦</kbd> |
 
 Undo and redo group changes by word.
+
+## Cursors
+
+| Action | Linux and Windows | macOS |
+|---|---|---|
+| Select the next occurrence | <kbd>Ctrl+D</kbd> | <kbd>⌘D</kbd> |
+| Select every occurrence | <kbd>Ctrl+Shift+L</kbd> | <kbd>⌘⇧L</kbd> |
+| Add a cursor above or below | <kbd>Ctrl+Alt+↑</kbd> / <kbd>Ctrl+Alt+↓</kbd> | <kbd>⌘⌥↑</kbd> / <kbd>⌘⌥↓</kbd> |
+| Add or remove a cursor | <kbd>Alt</kbd>+click | <kbd>⌥</kbd>+click |
+| Back to one cursor | <kbd>Esc</kbd> | <kbd>Esc</kbd> |
 
 ## Search
 
@@ -38,6 +54,18 @@ Undo and redo group changes by word.
 | Next match | <kbd>F3</kbd> | <kbd>F3</kbd> |
 | Previous match | <kbd>Shift+F3</kbd> | <kbd>⇧F3</kbd> |
 | Replace | <kbd>Ctrl+H</kbd> | <kbd>⌘⌥F</kbd> |
+| Find in files | <kbd>Ctrl+Shift+F</kbd> | <kbd>⌘⇧F</kbd> |
+| Back to the file tree | <kbd>Ctrl+Shift+E</kbd> | <kbd>⌘⇧E</kbd> |
+
+## Language servers
+
+| Action | Linux and Windows | macOS |
+|---|---|---|
+| Go to definition | <kbd>F12</kbd> or <kbd>Ctrl</kbd>+click | <kbd>F12</kbd> or <kbd>⌘</kbd>+click |
+| Complete | <kbd>Ctrl+Space</kbd> | <kbd>⌃Space</kbd> |
+| Format the file | <kbd>Shift+Alt+F</kbd> | <kbd>⇧⌥F</kbd> |
+| Rename the symbol | <kbd>F2</kbd> in the editor | <kbd>F2</kbd> in the editor |
+| Next / previous problem | <kbd>F8</kbd> / <kbd>Shift+F8</kbd> | <kbd>F8</kbd> / <kbd>⇧F8</kbd> |
 
 ## File tree and view
 
@@ -49,6 +77,10 @@ Undo and redo group changes by word.
 | Move to the trash | <kbd>Delete</kbd> | <kbd>⌦</kbd> |
 | Show or hide the sidebar | <kbd>Ctrl+B</kbd> | <kbd>⌘B</kbd> |
 | Markdown preview | <kbd>Ctrl+Shift+V</kbd> | <kbd>⌘⇧V</kbd> |
+| Show or hide the terminal | <kbd>Ctrl+`</kbd> | <kbd>⌃`</kbd> |
+| Bigger / smaller / original font | <kbd>Ctrl+=</kbd> / <kbd>Ctrl+-</kbd> / <kbd>Ctrl+0</kbd> | <kbd>⌘=</kbd> / <kbd>⌘-</kbd> / <kbd>⌘0</kbd> |
+
+In the terminal, <kbd>Ctrl+Shift+C</kbd> and <kbd>Ctrl+Shift+V</kbd> copy and paste, and the other <kbd>Ctrl</kbd> keys go to the program.
 
 On Mac keyboards without a <kbd>⌦</kbd> key, press <kbd>Fn+Delete</kbd>.
 

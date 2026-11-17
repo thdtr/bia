@@ -1,6 +1,6 @@
 +++
 title = "Getting started"
-description = "Open folders and files, work with the file tree and save safely."
+description = "Open folders and files, edit with several cursors, search, use git and the terminal, and save safely."
 weight = 2
 +++
 
@@ -12,7 +12,9 @@ BIA works on one folder at a time, shown in the file tree on the left. A folder 
 - from the command line, with `bia ~/code/project`;
 - by starting BIA with no arguments, which reopens the last folder used.
 
-The last folder is stored in `state.json`, in the configuration folder. BIA never writes to `settings.json` on its own.
+Each folder remembers the files that were open in it and where the cursor was. They open again with the folder. The welcome screen lists recent folders.
+
+This is stored in `state.json`, in the configuration folder. BIA never writes to `settings.json` on its own.
 
 ## Command line
 
@@ -43,17 +45,73 @@ Folders are listed first, then files, one per line. Names listed in the `hidden`
 
 Deleted files go to the operating system's trash and can be restored from there. A file with unsaved changes cannot be moved to the trash.
 
+In a git repository, changed files are shown in one color and new files in another, along with the folders that contain them.
+
 ## Finding files and lines
 
-<kbd>Ctrl+P</kbd> opens a file by name. Typing part of the name filters the list. Adding `:line` at the end, as in `main:42`, opens the file at that line.
+<kbd>Ctrl+P</kbd> opens a file by name. Typing part of the name filters the list. Adding `:line` at the end, as in `main:42`, opens the file at that line. Files listed in `.gitignore` are left out.
 
 <kbd>Ctrl+G</kbd> moves the cursor to a line in the current file. A value in the form `line:column` is also accepted.
 
+## Several cursors
+
+Every editing command works at each cursor at once.
+
+| Action | Keys |
+|---|---|
+| Select the word, then its next occurrence | <kbd>Ctrl+D</kbd> |
+| Select every occurrence | <kbd>Ctrl+Shift+L</kbd> |
+| Add a cursor above or below | <kbd>Ctrl+Alt+↑</kbd> / <kbd>Ctrl+Alt+↓</kbd> |
+| Add or remove a cursor | <kbd>Alt</kbd>+click |
+| Back to one cursor | <kbd>Esc</kbd> |
+
+When the clipboard holds as many lines as there are cursors, pasting gives one line to each.
+
+## Lines
+
+| Action | Keys |
+|---|---|
+| Comment or uncomment | <kbd>Ctrl+/</kbd> |
+| Move up or down | <kbd>Alt+↑</kbd> / <kbd>Alt+↓</kbd> |
+| Duplicate up or down | <kbd>Shift+Alt+↑</kbd> / <kbd>Shift+Alt+↓</kbd> |
+| Delete | <kbd>Ctrl+Shift+K</kbd> |
+| Select the line (again for the next one) | <kbd>Ctrl+L</kbd> |
+
+<kbd>Ctrl+C</kbd> and <kbd>Ctrl+X</kbd> with nothing selected take the whole line, and pasting it puts it above the cursor's line.
+
+Typing `(`, `[`, `{` or a quote also types the closing half, and wraps the selection if there is one. The `auto_close` setting turns this off. The bracket matching the one at the cursor is highlighted.
+
+With `soft_wrap` on, long lines wrap at the edge of the window, and the arrow keys move by rows on screen. <kbd>Ctrl+=</kbd> and <kbd>Ctrl+-</kbd> change the font size until BIA closes; <kbd>Ctrl+0</kbd> resets it.
+
 ## Find and replace
 
-<kbd>Ctrl+F</kbd> searches the current file. <kbd>F3</kbd> and <kbd>Shift+F3</kbd> move to the next and previous match.
+<kbd>Ctrl+F</kbd> searches the current file and highlights every match. <kbd>Enter</kbd>, <kbd>F3</kbd> and <kbd>Shift+F3</kbd> move to the next and previous match.
 
 <kbd>Ctrl+H</kbd> opens replace (<kbd>⌘⌥F</kbd> on macOS, where <kbd>⌘H</kbd> hides the application). Matches can be replaced one at a time or all at once.
+
+Three buttons next to the field match case, match whole words and read the text as a regular expression. In a regular expression, the replacement can use `$1` for a group, and `\n` for a line break.
+
+## Find in files
+
+<kbd>Ctrl+Shift+F</kbd> searches every file in the folder, in the sidebar, with the same three options. <kbd>Enter</kbd> starts the search. Files listed in `.gitignore`, binary files and files over 16 MB are skipped. Open files are searched with their unsaved changes. Clicking a result opens the file with the match selected.
+
+<kbd>Ctrl+Shift+E</kbd> goes back to the file tree.
+
+## Git
+
+In a git repository, bars beside the line numbers show the lines added and changed since the last commit, and a mark shows where lines were deleted. The status bar shows the branch. All of this refreshes on save and when the window regains focus.
+
+BIA runs your `git` for this, only to read the repository. Without git, or outside a repository, nothing is shown.
+
+## Terminal
+
+<kbd>Ctrl+`</kbd>, or "Terminal" in the status bar, shows a terminal under the editor, running your shell in the open folder. Pressing it again hides the terminal; the shell keeps running.
+
+<kbd>Ctrl+Shift+C</kbd> and <kbd>Ctrl+Shift+V</kbd> copy and paste. <kbd>Ctrl+C</kbd> goes to the program, as in any terminal. Shortcuts such as <kbd>Ctrl+P</kbd> and <kbd>Ctrl+Tab</kbd> still work while the terminal has focus.
+
+## Language servers
+
+With a language server set up, BIA underlines errors as you type, completes code and can go to definitions, show what's under the mouse, format and rename. See [Language servers](@/docs/language-servers.md).
 
 ## Indentation
 
@@ -85,6 +143,8 @@ Line endings (LF or CRLF) and a UTF-8 byte order mark are written back as they w
 If a file changed on disk after it was opened, BIA asks before overwriting it. Changes made outside BIA are picked up when its window regains focus.
 
 A dot on a tab marks unsaved changes. Closing the tab or quitting with unsaved changes asks for confirmation.
+
+Unsaved changes are also copied to the `backups` folder, in the configuration folder, two seconds after the last edit. If BIA or the system stops before they are saved, opening the file again brings them back. The copy is deleted once the file is saved or the changes are discarded.
 
 ## Files BIA does not open
 

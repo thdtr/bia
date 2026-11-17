@@ -1,10 +1,10 @@
 +++
 title = "Temas"
 description = "Os temas que vêm com o BIA e como criar o seu."
-weight = 5
+weight = 6
 +++
 
-Um tema é um arquivo JSON com nove cores de interface e um mapa de cores de sintaxe. O BIA vem com dois:
+Um tema é um arquivo JSON com nove cores de interface (mais duas opcionais) e um mapa de cores de sintaxe. O BIA vem com dois:
 
 | Tema | Tipo | Descrição |
 |---|---|---|
@@ -36,7 +36,9 @@ Um tema salvo de dentro do BIA é aplicado na hora, o que permite ajustar as cor
     "accent": "#3fb59b",
     "selection": "#3fb59b33",
     "hover": "#1e1c24",
-    "danger": "#e5736b"
+    "danger": "#e5736b",
+    "added": "#8fb573",
+    "modified": "#d6a85c"
   },
   "syntax": {
     "comment": { "color": "#6a6474", "italic": true },
@@ -61,6 +63,8 @@ Um tema salvo de dentro do BIA é aplicado na hora, o que permite ajustar as cor
 | `selection` | Texto selecionado. |
 | `hover` | Linhas sob o ponteiro ou selecionadas, e blocos de código na prévia de Markdown. |
 | `danger` | Erros e a confirmação para mandar um arquivo para a lixeira. |
+| `added` | Opcional. Linhas e arquivos adicionados desde o último commit do git. Usa a cor de destaque se faltar. |
+| `modified` | Opcional. Linhas e arquivos alterados desde o último commit do git, e avisos. Usa a cor de destaque se faltar. |
 
 `kind` pode ser `dark` ou `light`. As cores são escritas como `#rgb`, `#rgba`, `#rrggbb` ou `#rrggbbaa`.
 

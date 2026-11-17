@@ -14,24 +14,29 @@ shot_caption = "O BIA no macOS, aberto numa rota de API do Next.js."
 
 features_title = "Tudo o que o BIA faz"
 features = [
-  { name = "Árvore de arquivos", text = "Crie, renomeie e mande para a lixeira por ela." },
+  { name = "Vários cursores", text = "<kbd data-mod>Ctrl+D</kbd> pega a próxima ocorrência. Todo comando vale para todos." },
+  { name = "Busca nos arquivos", text = "Maiúsculas, palavra inteira e regex. Pula o que está no `.gitignore`." },
+  { name = "Servidores de linguagem", text = "Erros enquanto digita, completar, definição, renomear. Você escolhe o servidor." },
+  { name = "Git", text = "Linhas alteradas ao lado dos números, arquivos alterados na árvore, a branch." },
+  { name = "Terminal", text = "O seu shell num painel, com <kbd data-mod>Ctrl+`</kbd>." },
+  { name = "Comandos de linha", text = "Comentar, mover, duplicar e apagar linhas. Parênteses fecham sozinhos." },
   { name = "Destaque de sintaxe", text = "Cerca de 200 linguagens, mais os seus `.sublime-syntax`." },
-  { name = "Prévia de Markdown", text = "Ao vivo, ao lado do texto." },
-  { name = "Buscar e substituir", text = "Um por vez, ou todos de uma vez." },
+  { name = "Arquivos de qualquer tamanho", text = "300 mil linhas abrem na hora, com número de linha." },
   { name = "Abrir pelo nome", text = "<kbd data-mod>Ctrl+P</kbd> e parte do nome. Com `:42`, vai para a linha 42." },
-  { name = "Indentação", text = "Tabs ou espaços, conforme cada arquivo." },
+  { name = "Prévia de Markdown", text = "Ao vivo, ao lado do texto." },
   { name = "Temas", text = "Noite e Dia, ou o seu em JSON." },
   { name = "Português e inglês", text = "Segue o sistema, ou o que você configurar." },
 ]
 
 left_out_title = "O que ele ainda não faz"
-left_out = ["Terminal", "Git", "Depurador", "LSP", "Plugins", "IA"]
+left_out = ["Depurador", "Plugins", "IA"]
 left_out_note = "Alguns podem chegar mais tarde. Só o que depende de internet fica de fora."
 
 saves_title = "Salvar nunca estraga um arquivo"
 saves_lede = "O BIA grava uma cópia antes e só faz a troca quando ela já está no disco."
 saves_steps = ["Grava uma cópia oculta", "Garante que ela foi para o disco", "Renomeia por cima do original"]
 saves_notes = [
+  "O que não foi salvo volta depois de um travamento.",
   "Quebras de linha e BOM ficam como estavam.",
   "Se o arquivo mudou no disco, o BIA pergunta antes.",
   "Arquivos apagados vão para a lixeira.",

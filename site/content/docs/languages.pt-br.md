@@ -1,7 +1,7 @@
 +++
 title = "Destaque de sintaxe"
 description = "As gramáticas que vêm com o BIA, como adicionar uma linguagem e como o BIA escolhe a gramática."
-weight = 6
+weight = 7
 +++
 
 O BIA destaca o código com [definições de sintaxe do Sublime Text](https://www.sublimetext.com/docs/syntax.html) (arquivos `.sublime-syntax`). Cerca de 200 linguagens já vêm incluídas, a partir do conjunto mantido pelo projeto [`bat`](https://github.com/sharkdp/bat).
@@ -48,6 +48,12 @@ O BIA tenta, nesta ordem:
 4. texto simples.
 
 A barra de status mostra a gramática em uso.
+
+## Comentários
+
+<kbd>Ctrl+/</kbd> comenta linhas com o marcador da própria linguagem: `//` em Rust, `#` em Python, `<!-- -->` em HTML. As gramáticas embutidas não trazem esses marcadores, então o BIA os mantém numa tabela própria, para cerca de 100 linguagens. Uma gramática adicionada não está nela, e o <kbd>Ctrl+/</kbd> avisa isso na barra de status.
+
+O nome da linguagem na barra de status também é a chave de `language_servers` (veja [Servidores de linguagem](@/docs/language-servers.pt-br.md)).
 
 ## Por que não tree-sitter
 

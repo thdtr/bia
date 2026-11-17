@@ -33,9 +33,13 @@ config folder.
 ### Where things are
 
 * `crates/bia-core`: everything that isn't drawing. If something can be tested
-  without a window, it probably belongs here.
+  without a window, it probably belongs here. The text, cursors and every
+  editing command are in `src/editor/`; language servers in `src/lsp/`; git in
+  `src/git.rs`.
 * `crates/bia/src/app.rs`: the app state and the update loop.
 * `crates/bia/src/tabs.rs`, `buffer.rs`: open files and their text.
+* `crates/bia/src/code_view/`: the editor widget. `terminal_view.rs` draws the
+  terminal, `lsp.rs` keeps the language servers.
 * `crates/bia/src/ui/`: what's on screen. All colors are decided in `style.rs`.
 * `assets/`: themes, translations, fonts and icons.
 

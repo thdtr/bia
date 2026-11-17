@@ -157,6 +157,10 @@ few things an editor can't really do without:
 * **Bare CR line breaks aren't supported.** These files aren't opened.
 * **Find in files doesn't replace yet.** Results open the file with the match
   selected, where `Ctrl+H` works.
+* **Language servers get the whole file** 150 ms after each pause in typing, not
+  just the changes. Simple and reliable; slower on very large files.
+* **Input methods are untested.** Composed characters and IMEs for languages such as
+  Japanese go through iced's input method support, but no one has tried them yet.
 * **Highlighting far into a long file can be wrong** inside a comment or string that
   started more than 5,000 lines above (see *Highlighting* above).
 

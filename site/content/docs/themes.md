@@ -1,10 +1,10 @@
 +++
 title = "Themes"
 description = "The built-in themes and how to write your own."
-weight = 5
+weight = 6
 +++
 
-A theme is a JSON file with nine interface colors and a map of syntax colors. BIA includes two:
+A theme is a JSON file with nine interface colors (plus two optional ones) and a map of syntax colors. BIA includes two:
 
 | Theme | Kind | Description |
 |---|---|---|
@@ -36,7 +36,9 @@ A theme saved from inside BIA is applied immediately, so colors can be adjusted 
     "accent": "#3fb59b",
     "selection": "#3fb59b33",
     "hover": "#1e1c24",
-    "danger": "#e5736b"
+    "danger": "#e5736b",
+    "added": "#8fb573",
+    "modified": "#d6a85c"
   },
   "syntax": {
     "comment": { "color": "#6a6474", "italic": true },
@@ -61,6 +63,8 @@ A theme saved from inside BIA is applied immediately, so colors can be adjusted 
 | `selection` | Selected text. |
 | `hover` | Rows under the pointer or selected, and code blocks in the Markdown preview. |
 | `danger` | Errors and the confirmation to move a file to the trash. |
+| `added` | Optional. Lines and files added since the last git commit. The accent when missing. |
+| `modified` | Optional. Lines and files changed since the last git commit, and warnings. The accent when missing. |
 
 `kind` is `dark` or `light`. Colors are written as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 

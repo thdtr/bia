@@ -1,7 +1,7 @@
 +++
 title = "Syntax highlighting"
 description = "The built-in grammars, how to add a language and how BIA chooses a grammar."
-weight = 6
+weight = 7
 +++
 
 BIA highlights code with [Sublime Text syntax definitions](https://www.sublimetext.com/docs/syntax.html) (`.sublime-syntax` files). About 200 languages are included, from the set maintained by the [`bat`](https://github.com/sharkdp/bat) project.
@@ -48,6 +48,12 @@ BIA tries the following, in order:
 4. plain text.
 
 The status bar shows the grammar in use.
+
+## Comments
+
+<kbd>Ctrl+/</kbd> comments lines with the language's own marker: `//` in Rust, `#` in Python, `<!-- -->` in HTML. The built-in grammars don't carry these markers, so BIA keeps them in a table of its own, for about 100 languages. An added grammar isn't in it, and <kbd>Ctrl+/</kbd> says so in the status bar.
+
+The language name in the status bar is also the key for `language_servers` (see [Language servers](@/docs/language-servers.md)).
 
 ## Why not tree-sitter
 

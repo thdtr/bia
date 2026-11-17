@@ -21,7 +21,8 @@ A pasta contém:
 ```text
 bia/
 ├── settings.json       suas configurações
-├── state.json          gravado pelo BIA: a última pasta aberta
+├── state.json          gravado pelo BIA: as pastas abertas e seus arquivos abertos
+├── backups/            gravado pelo BIA: alterações não salvas, até salvar ou descartar
 ├── themes/             temas personalizados (*.json)
 └── languages/          gramáticas adicionais (*.sublime-syntax)
 ```
@@ -40,7 +41,12 @@ Se o `settings.json` não existir, o BIA o cria com os valores padrão.
   "ui_font_size": 13,
   "theme": "noite",
   "language": "auto",
-  "hidden": [".git", "node_modules", "target"]
+  "hidden": [".git", "node_modules", "target"],
+  "auto_close": true,
+  "soft_wrap": false,
+  "language_servers": {
+    "Rust": ["rust-analyzer"]
+  }
 }
 ```
 
@@ -53,12 +59,15 @@ Uma configuração omitida mantém o valor padrão.
 | `font_family` | `"Fira Code"` | Fonte do editor. Aceita qualquer fonte instalada. |
 | `font_size` | `14` | Tamanho da fonte do editor, de 6 a 72. |
 | `line_height` | `1.55` | Altura da linha no editor, de 1.0 a 3.0. |
-| `tab_size` | `4` | Largura da indentação, de 1 a 8, para arquivos que ainda não têm indentação. Os que já têm mantêm a deles. |
+| `tab_size` | `4` | Quantas colunas um tab ocupa na tela, de 1 a 8, e a largura da indentação para arquivos que ainda não têm indentação. Os que já têm mantêm a deles. |
 | `ui_font_family` | `"Fira Sans"` | Fonte da interface. |
 | `ui_font_size` | `13` | Tamanho da fonte da interface, de 8 a 32. |
 | `theme` | `"noite"` | `noite`, `dia` ou o nome de um tema personalizado. Veja [Temas](@/docs/themes.pt-br.md). |
 | `language` | `"auto"` | Idioma da interface: `auto` (segue o sistema), `en` ou `pt-BR`. |
 | `hidden` | veja abaixo | Nomes que a árvore de arquivos não exibe. |
+| `auto_close` | `true` | Digitar `(`, `[`, `{` ou aspas também digita o fechamento. |
+| `soft_wrap` | `false` | As linhas longas quebram na borda da janela em vez de rolar para o lado. |
+| `language_servers` | `{}` | O servidor de linguagem de cada linguagem, como um comando: o programa e depois os argumentos. A chave é o nome da linguagem que aparece na barra de status. Veja [Servidores de linguagem](@/docs/language-servers.pt-br.md). |
 
 O valor padrão de `hidden` é `[".git", ".hg", ".svn", ".DS_Store", "Thumbs.db", "node_modules", "target"]`.
 

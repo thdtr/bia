@@ -113,7 +113,7 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `` Ctrl+` `` | Mostrar / esconder o terminal |
 | `Ctrl+,` | Configurações |
 
-No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`.
+No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`. `Ctrl+Space` e ``Ctrl+` `` continuam com `Ctrl`, porque o macOS usa `Cmd` nesses dois.
 
 ## Configurações
 

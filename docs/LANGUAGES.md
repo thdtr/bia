@@ -53,6 +53,14 @@ In order:
 
 The status bar shows which grammar is active.
 
+## Comments
+
+`Ctrl+/` needs to know how a language writes comments, and the built-in grammars don't
+say (Sublime keeps that in separate metadata files). BIA has a table of its own for
+about 100 languages, in `crates/bia-core/src/editing.rs`, keyed by grammar name. A
+grammar you add isn't in it: `Ctrl+/` says so in the status bar. A line in that table
+fixes it for everyone.
+
 ## Why Sublime grammars and not tree-sitter?
 
 Tree-sitter parses more precisely, but every grammar is C code that has to be compiled

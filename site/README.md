@@ -8,7 +8,7 @@ under `/pt-br/`.
 cd site
 zola serve          # http://127.0.0.1:1111
 zola build          # writes public/
-netlify deploy --prod
+netlify deploy --prod --no-build --dir public
 ```
 
 - `content/`: the home page copy (`_index.md`, in `[extra]`) and the docs. Every file

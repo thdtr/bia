@@ -1,7 +1,7 @@
 +++
 title = "Sem código de rede"
 description = "O BIA não tem nenhum código que abra uma conexão de rede. Esta página explica como isso é verificado e o que essa garantia cobre."
-weight = 7
+weight = 8
 +++
 
 O BIA não tem nenhum código que abra uma conexão de rede. Ele não envia telemetria, não busca atualizações e não se comunica com nenhum serviço online. No código-fonte, essa característica é chamada de *sealed* (selado).
@@ -43,6 +43,12 @@ O código do BIA nunca abre uma conexão de rede, nunca faz uma requisição HTT
 - **Links no Markdown.** Clicar em um link na prévia copia o endereço. O BIA não abre o navegador.
 - **Imagens no Markdown.** A prévia não carrega imagens, locais ou remotas. Ela mostra o texto alternativo.
 - **Unidades de rede.** Ao abrir uma pasta em NFS ou SMB, quem faz o acesso à rede é o sistema operacional. O BIA apenas lê os arquivos.
+- **Programas que o BIA executa.** Alguns recursos executam outros programas, que são separados do BIA:
+  - **git**, para mostrar linhas e arquivos alterados e a branch. O BIA só pede que ele leia o repositório, e desliga o que poderia fazê-lo iniciar outros programas ou acessar um servidor: hooks, o daemon fsmonitor e todo transporte (`protocol.allow=never`).
+  - **Servidores de linguagem**, só os indicados em `language_servers`. O BIA não baixa nenhum, e os inicia com os downloads do cargo, go, pip e npm desligados. Veja [Servidores de linguagem](@/docs/language-servers.pt-br.md#a-rede).
+  - **O seu shell**, no terminal. O que roda nele é escolha sua, inclusive acessar a rede.
+
+  Para uma garantia total no Linux, `unshare -rn bia` também tira a rede de todo programa que o BIA inicia.
 - **Binários de outras origens.** A garantia vale para binários gerados a partir deste repositório. Compile o BIA você mesmo, ou confirme que o arquivo de uma versão foi gerado pelo CI do repositório:
 
   ```sh

@@ -1,7 +1,7 @@
 +++
 title = "No network code"
 description = "BIA contains no code that opens a network connection. This page explains how that is verified and what it covers."
-weight = 7
+weight = 8
 +++
 
 BIA contains no code that opens a network connection. It does not send telemetry, check for updates or communicate with any online service. In the source code, this property is called being *sealed*.
@@ -43,6 +43,12 @@ BIA's own code never opens a network connection, makes an HTTP request or perfor
 - **Links in Markdown.** Clicking a link in the preview copies its URL. BIA does not open a browser.
 - **Images in Markdown.** The preview does not load images, local or remote. It shows their alternative text.
 - **Network drives.** When a folder on NFS or SMB is opened, the operating system performs the network access. BIA only reads files.
+- **Programs BIA runs.** Some features run other programs, which are separate from BIA:
+  - **git**, to show changed lines and files and the branch. BIA only asks it to read the repository, and turns off what could make it start other programs or reach a server: hooks, the fsmonitor daemon and every transport (`protocol.allow=never`).
+  - **Language servers**, only the ones named in `language_servers`. BIA downloads none, and starts them with the download switches of cargo, go, pip and npm turned off. See [Language servers](@/docs/language-servers.md#the-network).
+  - **Your shell**, in the terminal. What runs there is up to you, network included.
+
+  For a hard guarantee on Linux, `unshare -rn bia` also takes the network away from every program BIA starts.
 - **Builds from other sources.** The guarantee applies to builds of this repository. Build BIA yourself, or verify that a release file was produced by the repository's CI:
 
   ```sh

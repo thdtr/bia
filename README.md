@@ -111,7 +111,7 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `` Ctrl+` `` | Show / hide the terminal |
 | `Ctrl+,` | Settings |
 
-On a Mac, use `Cmd` and `Option`. Replace is `Cmd+Alt+F`.
+On a Mac, use `Cmd` and `Option`. Replace is `Cmd+Alt+F`. `Ctrl+Space` and ``Ctrl+` `` stay `Ctrl`, since macOS takes `Cmd` for those.
 
 ## Settings
 

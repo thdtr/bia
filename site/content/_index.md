@@ -14,24 +14,29 @@ shot_caption = "BIA on macOS, open on a Next.js API route."
 
 features_title = "Everything BIA does"
 features = [
-  { name = "File tree", text = "Create, rename and trash files from it." },
+  { name = "Several cursors", text = "<kbd data-mod>Ctrl+D</kbd> adds the next match. Every command works on all of them." },
+  { name = "Find in files", text = "Match case, whole word and regex. Skips what `.gitignore` lists." },
+  { name = "Language servers", text = "Errors as you type, completion, definition, rename. You pick the server." },
+  { name = "Git", text = "Changed lines beside the numbers, changed files in the tree, the branch." },
+  { name = "Terminal", text = "Your shell in a panel, with <kbd data-mod>Ctrl+`</kbd>." },
+  { name = "Line commands", text = "Comment, move, duplicate and delete lines. Brackets close themselves." },
   { name = "Syntax highlighting", text = "About 200 languages, plus your own `.sublime-syntax` files." },
-  { name = "Markdown preview", text = "Live, next to the text." },
-  { name = "Find and replace", text = "One match at a time, or all at once." },
+  { name = "Files of any size", text = "300,000 lines open at once, line numbers included." },
   { name = "Open by name", text = "<kbd data-mod>Ctrl+P</kbd> and part of the name. Add `:42` for line 42." },
-  { name = "Indentation", text = "Tabs or spaces, read from each file." },
+  { name = "Markdown preview", text = "Live, next to the text." },
   { name = "Themes", text = "Noite and Dia, or your own in JSON." },
   { name = "English and Portuguese", text = "Follows your system, or your settings." },
 ]
 
 left_out_title = "What it doesn’t do yet"
-left_out = ["Terminal", "Git", "Debugger", "LSP", "Plugins", "AI"]
+left_out = ["Debugger", "Plugins", "AI"]
 left_out_note = "Some may come later. Only what needs the network stays out."
 
 saves_title = "Saving never breaks a file"
 saves_lede = "BIA writes a copy first and swaps it in once it’s safely on disk."
 saves_steps = ["Writes a hidden copy", "Flushes it to disk", "Renames it over the original"]
 saves_notes = [
+  "Unsaved edits come back after a crash.",
   "Line endings and the BOM stay as they were.",
   "If the file changed on disk, BIA asks first.",
   "Deleted files go to the trash.",
