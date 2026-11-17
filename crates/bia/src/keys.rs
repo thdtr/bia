@@ -104,6 +104,11 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
             _ => None,
         };
     }
+    // Ctrl+` everywhere, as in other editors: on macOS, Cmd+` switches
+    // windows.
+    if mods.control() && key.to_latin(physical) == Some('`') {
+        return Some(Terminal);
+    }
     if !cmd {
         return None;
     }
@@ -131,7 +136,6 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         '=' | '+' => ZoomIn,
         '-' => ZoomOut,
         '0' => ZoomReset,
-        '`' => Terminal,
         _ => return None,
     })
 }
@@ -253,7 +257,8 @@ pub fn editor_command(key: &Key, physical: Physical, mods: Modifiers) -> Option<
             Named::F12 => GoToDefinition,
             Named::F2 => RenameSymbol,
             Named::F8 => NextProblem { back: shift },
-            Named::Space if cmd && !shift => Complete,
+            // Ctrl on macOS too: Cmd+Space opens Spotlight.
+            Named::Space if mods.control() && !shift => Complete,
             _ => return None,
         });
     }

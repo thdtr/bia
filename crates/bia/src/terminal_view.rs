@@ -123,6 +123,10 @@ fn is_app_shortcut(
     physical: keyboard::key::Physical,
     mods: keyboard::Modifiers,
 ) -> bool {
+    // Ctrl+` hides the terminal on every system (see `keys::shortcut`).
+    if mods.control() && key.to_latin(physical) == Some('`') {
+        return true;
+    }
     if !mods.command() {
         return false;
     }
