@@ -106,9 +106,12 @@ keyboard / mouse ──► iced ──► Message ──► Bia::update ──�
   Selections, the current line, search matches and the bracket pair are rectangles
   under the text; cursors are drawn over it. The widget scrolls by itself, follows
   the cursor and remembers each tab's place.
-* **Highlighting.** `syntax.rs` keeps syntect's state every 16 lines and the styles of
-  lines already drawn. An edit drops what comes after the first changed line (the
-  editor logs it). Drawing parses for 12 ms at most per frame; until it catches up,
+* **Highlighting.** `syntax.rs` keeps syntect's state every 16 lines, and the styles of
+  lines already drawn with the state each one started from. An edit sets aside what
+  comes after the changed lines (the editor logs them), moved to where it is now;
+  parsing takes it back from the first line that starts in the same state as before,
+  so typing inside a line reparses a line or two. Drawing parses for 12 ms at most
+  per frame; until it catches up,
   lines on screen are parsed from their own start. A jump more than 5,000 lines past
   what was parsed starts parsing 200 lines above the screen instead.
 * **What follows the text.** Find matches, the Markdown preview and the git marks

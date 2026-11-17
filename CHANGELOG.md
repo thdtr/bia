@@ -17,6 +17,9 @@ Notable changes to BIA are listed here. The format is based on
   when you pause typing, and the git diff and the search run in the background. In a
   45,000-line file, being in a git repository added about 19 ms of work to every
   keystroke; now it adds about 2.
+- Highlighting no longer parses everything below the line you edit again. Lines below
+  keep their colors unless the edit changes them, as opening a comment does. Typing in
+  the middle of the screen in a 200,000-line file went from 20 ms of work per key to 13.
 - Backups are written in the background instead of while you type.
 - `Ctrl+P` lists the folder in the background and remembers the list, so it no longer
   freezes the window in big folders. Ranking 50,000 paths takes 3 ms instead of 18.
