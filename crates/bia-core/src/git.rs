@@ -68,25 +68,23 @@ pub struct Status {
     pub files: HashMap<PathBuf, FileStatus>,
 }
 
-/// The branch and changed files of the repository `dir` is in.
+/// The branch and changed files of the repository `dir` is in. One `git`
+/// process: starting one takes long on Windows, and this runs every time
+/// the window gets focus back.
 pub fn status(dir: &Path) -> Status {
-    let Some(top) = run(dir, &["rev-parse", "--show-toplevel"]) else {
+    // Where git's paths start. Found here rather than asked of git, and kept
+    // as the tree spells it (git would resolve symlinks, and the tree's
+    // paths wouldn't match).
+    let Some(top) = dir.ancestors().find(|d| d.join(".git").exists()) else {
         return Status::default();
     };
-    let top = PathBuf::from(String::from_utf8_lossy(&top).trim());
-    let branch = run(dir, &["branch", "--show-current"])
-        .map(|b| String::from_utf8_lossy(&b).trim().to_owned())
-        .filter(|b| !b.is_empty())
-        .or_else(|| {
-            run(dir, &["rev-parse", "--short", "HEAD"])
-                .map(|b| String::from_utf8_lossy(&b).trim().to_owned())
-        });
-    let porcelain =
-        run(dir, &["status", "--porcelain=v1", "-z", "--untracked-files=all"]).unwrap_or_default();
+    let args = ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"];
+    let Some(out) = run(dir, &args) else { return Status::default() };
+    let (branch, entries) = parse_porcelain(&out);
     let mut files = HashMap::new();
-    for (path, status) in parse_porcelain(&porcelain) {
+    for (path, status) in entries {
         let path = top.join(path);
-        for dir in path.ancestors().skip(1).take_while(|d| d.starts_with(&top) && *d != top) {
+        for dir in path.ancestors().skip(1).take_while(|d| d.starts_with(top) && *d != top) {
             files.entry(dir.to_path_buf()).or_insert(FileStatus::Modified);
         }
         files.insert(path, status);
@@ -94,27 +92,47 @@ pub fn status(dir: &Path) -> Status {
     Status { branch, files }
 }
 
-/// `git status --porcelain=v1 -z`: `XY path\0`, renames followed by the old
-/// path as another entry.
-fn parse_porcelain(out: &[u8]) -> Vec<(String, FileStatus)> {
+/// `git status --porcelain=v2 --branch -z`: the branch, then one entry per
+/// changed file, each ending in `\0`. Renames are followed by the old path
+/// as an entry of its own.
+fn parse_porcelain(out: &[u8]) -> (Option<String>, Vec<(String, FileStatus)>) {
+    let (mut head, mut oid) = (None, None);
     let mut entries = Vec::new();
-    let mut parts = out.split(|&b| b == 0).filter(|p| p.len() > 3);
-    while let Some(entry) = parts.next() {
-        let (x, y) = (entry[0], entry[1]);
-        let path = String::from_utf8_lossy(&entry[3..]).into_owned();
-        if x == b'R' || x == b'C' {
-            parts.next();
-        }
-        let status = match (x, y) {
-            (b'U', _) | (_, b'U') | (b'A', b'A') | (b'D', b'D') => FileStatus::Conflict,
-            (b'?', _) | (b'A', _) => FileStatus::Added,
-            // Deleted files aren't in the tree to mark.
-            (_, b'D') | (b'D', _) => continue,
-            _ => FileStatus::Modified,
+    let mut records = out.split(|&b| b == 0).map(String::from_utf8_lossy);
+    // The path comes after this many fields, which hold no spaces.
+    let path_after =
+        |record: &str, fields: usize| record.splitn(fields + 1, ' ').nth(fields).map(str::to_owned);
+    while let Some(record) = records.next() {
+        let xy = record.get(2..4).unwrap_or("").as_bytes();
+        let (x, y) = (xy.first().copied().unwrap_or(b'.'), xy.get(1).copied().unwrap_or(b'.'));
+        let entry = match record.as_bytes().first() {
+            Some(b'#') => {
+                if let Some(name) = record.strip_prefix("# branch.head ") {
+                    head = Some(name.to_owned()).filter(|n| n != "(detached)");
+                } else if let Some(id) = record.strip_prefix("# branch.oid ") {
+                    oid = (id != "(initial)").then(|| id.chars().take(7).collect::<String>());
+                }
+                continue;
+            }
+            Some(b'?') => record.get(2..).map(|p| (p.to_owned(), FileStatus::Added)),
+            Some(b'u') => path_after(&record, 10).map(|p| (p, FileStatus::Conflict)),
+            Some(kind @ (b'1' | b'2')) => {
+                let path = path_after(&record, if *kind == b'2' { 9 } else { 8 });
+                if *kind == b'2' {
+                    records.next();
+                }
+                match (x, y) {
+                    // Deleted files aren't in the tree to mark.
+                    (b'D', _) | (_, b'D') => None,
+                    (b'A', _) => path.map(|p| (p, FileStatus::Added)),
+                    _ => path.map(|p| (p, FileStatus::Modified)),
+                }
+            }
+            _ => None,
         };
-        entries.push((path, status));
+        entries.extend(entry);
     }
-    entries
+    (head.or(oid), entries)
 }
 
 /// A gutter mark: lines added or changed since the commit, or a spot where
@@ -162,17 +180,30 @@ mod tests {
 
     #[test]
     fn porcelain() {
-        let out = b" M src/a.rs\0?? new.txt\0R  b.rs\0old.rs\0UU c.rs\0 D gone.rs\0A  added.rs\0";
+        let (a, b, c) = ("1".repeat(40), "2".repeat(40), "3".repeat(40));
+        let out = format!(
+            "# branch.oid 0123456789abcdef0123456789abcdef01234567\0# branch.head main\0\
+             1 .M N... 100644 100644 100644 {a} {b} src/a b.rs\0? new file.txt\0\
+             2 R. N... 100644 100644 100644 {a} {b} R100 b.rs\0old.rs\0\
+             u UU N... 100644 100644 100644 100644 {a} {b} {c} c.rs\0\
+             1 .D N... 100644 100644 000000 {a} {b} gone.rs\0\
+             1 A. N... 000000 100644 100644 {a} {b} added.rs\0"
+        );
+        let (branch, entries) = parse_porcelain(out.as_bytes());
+        assert_eq!(branch.as_deref(), Some("main"));
         assert_eq!(
-            parse_porcelain(out),
+            entries,
             [
-                ("src/a.rs".to_owned(), FileStatus::Modified),
-                ("new.txt".to_owned(), FileStatus::Added),
+                ("src/a b.rs".to_owned(), FileStatus::Modified),
+                ("new file.txt".to_owned(), FileStatus::Added),
                 ("b.rs".to_owned(), FileStatus::Modified),
                 ("c.rs".to_owned(), FileStatus::Conflict),
                 ("added.rs".to_owned(), FileStatus::Added),
             ]
         );
+        // Detached: the short commit.
+        let out = b"# branch.oid 0123456789abcdef\0# branch.head (detached)\0";
+        assert_eq!(parse_porcelain(out).0.as_deref(), Some("0123456"));
     }
 
     /// Against a real repository, when git is installed.
@@ -203,14 +234,10 @@ mod tests {
         assert_eq!(head_text(&dir.join("new.txt")), None);
         let status = status(&dir.join("src"));
         assert_eq!(status.branch.as_deref(), Some("main"));
-        let top = PathBuf::from(
-            String::from_utf8(run(&dir, &["rev-parse", "--show-toplevel"]).unwrap())
-                .unwrap()
-                .trim(),
-        );
-        assert_eq!(status.files.get(&top.join("src/a.rs")), Some(&FileStatus::Modified));
-        assert_eq!(status.files.get(&top.join("src")), Some(&FileStatus::Modified));
-        assert_eq!(status.files.get(&top.join("new.txt")), Some(&FileStatus::Added));
+        // Paths as given, the way the file tree has them.
+        assert_eq!(status.files.get(&dir.join("src/a.rs")), Some(&FileStatus::Modified));
+        assert_eq!(status.files.get(&dir.join("src")), Some(&FileStatus::Modified));
+        assert_eq!(status.files.get(&dir.join("new.txt")), Some(&FileStatus::Added));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

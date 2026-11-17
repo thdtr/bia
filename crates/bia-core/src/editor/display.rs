@@ -4,7 +4,7 @@
 
 use super::motion::char_width;
 use super::{Changed, Editor};
-use ropey::Rope;
+use ropey::{Rope, RopeSlice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisplayMap {
@@ -25,13 +25,7 @@ impl DisplayMap {
         let lines = rope.len_lines();
         let wrap = wrap.map(|w| w.max(8));
         let rows = match wrap {
-            Some(width) => rope
-                .lines()
-                .map(|line| {
-                    let text = line.to_string();
-                    wrap_points(text.trim_end_matches('\n'), width, tab_width).len()
-                })
-                .collect(),
+            Some(width) => rope.lines().map(|line| line_rows(line, width, tab_width)).collect(),
             None => Vec::new(),
         };
         let mut map = Self { tab_width, wrap, lines, revision: 0, rows, rows_before: Vec::new() };
@@ -60,8 +54,9 @@ impl DisplayMap {
                 self.lines = editor.line_count();
                 self.revision = editor.revision();
                 let Some(width) = wrap else { return };
+                let rope = editor.rope();
                 let measured: Vec<usize> = (first..new_end)
-                    .map(|l| wrap_points(&editor.line(l), width, self.tab_width).len())
+                    .map(|l| line_rows(rope.line(l), width, self.tab_width))
                     .collect();
                 let old_end = old_end.clamp(first, self.rows.len());
                 self.rows.splice(first..old_end, measured);
@@ -148,31 +143,85 @@ impl DisplayMap {
     }
 }
 
+/// How many rows `line` (with or without its `\n`) takes, wrapped at
+/// `width`. Measuring every line of a long file happens whenever the width
+/// changes, so this doesn't allocate, and skips the lines that obviously fit.
+fn line_rows(line: RopeSlice<'_>, width: usize, tab_width: usize) -> usize {
+    let len = line.len_bytes();
+    let len = if len > 0 && line.byte(len - 1) == b'\n' { len - 1 } else { len };
+    // Any character but a tab takes no more cells than it has bytes.
+    if len <= width && !line.chunks().any(|c| c.contains('\t')) {
+        return 1;
+    }
+    let line = line.byte_slice(..len);
+    let mut rows = 1;
+    match line.as_str() {
+        Some(text) => wrap_each(text, width, tab_width, |_| rows += 1),
+        None => wrap_each(&line.to_string(), width, tab_width, |_| rows += 1),
+    }
+    rows
+}
+
 /// Where `line` breaks into rows of at most `width` cells: after the last
 /// space that fits, or mid-word when a word is wider than a row.
 pub fn wrap_points(line: &str, width: usize, tab_width: usize) -> Vec<usize> {
     let mut starts = vec![0];
+    wrap_each(line, width, tab_width, |at| starts.push(at));
+    starts
+}
+
+/// Calls `row` with the start of every row of `line` after the first.
+fn wrap_each(line: &str, width: usize, tab_width: usize, row: impl FnMut(usize)) {
+    if line.is_ascii() && !line.contains('\t') {
+        wrap_ascii(line.as_bytes(), width, row);
+    } else {
+        wrap_chars(line, width, tab_width, row);
+    }
+}
+
+/// [`wrap_chars`] for text where every character is one cell.
+fn wrap_ascii(line: &[u8], width: usize, mut row: impl FnMut(usize)) {
+    let mut row_start = 0;
+    let mut last_break: Option<usize> = None;
+    for (i, &b) in line.iter().enumerate() {
+        if i - row_start >= width && i > row_start {
+            let at = match last_break {
+                Some(b) if b > row_start && b <= i => b,
+                _ => i,
+            };
+            row(at);
+            row_start = at;
+            last_break = None;
+        }
+        if b == b' ' {
+            last_break = Some(i + 1);
+        }
+    }
+}
+
+fn wrap_chars(line: &str, width: usize, tab_width: usize, mut row: impl FnMut(usize)) {
     let mut row_start = 0;
     let mut col = 0;
     let mut last_break: Option<usize> = None;
     for (i, c) in line.char_indices() {
-        let w = char_width(c, col, tab_width);
+        let mut w = char_width(c, col, tab_width);
         if col + w > width && i > row_start {
             let at = match last_break {
                 Some(b) if b > row_start && b <= i => b,
                 _ => i,
             };
-            starts.push(at);
+            row(at);
             row_start = at;
             last_break = None;
             col = line[at..i].chars().fold(0, |col, c| col + char_width(c, col, tab_width));
+            // A tab is narrower or wider where the row now puts it.
+            w = char_width(c, col, tab_width);
         }
-        col += char_width(c, col, tab_width);
+        col += w;
         if c == ' ' || c == '\t' {
             last_break = Some(i + c.len_utf8());
         }
     }
-    starts
 }
 
 #[cfg(test)]
@@ -188,6 +237,48 @@ mod tests {
         assert_eq!(wrap_points("", 5, 4), [0]);
         // Wide characters take two cells.
         assert_eq!(wrap_points("日本語日本", 4, 4), [0, 6, 12]);
+    }
+
+    #[test]
+    fn counting_rows_matches_the_breaks() {
+        let lines = [
+            "",
+            "short",
+            "aaaa bbbb cccc dddd",
+            "a\tb\tc\td\te",
+            "日本語日本語日本語",
+            "x".repeat(40).as_str(),
+        ]
+        .map(str::to_owned);
+        for line in &lines {
+            for width in [8, 10, 17] {
+                let rope = Rope::from_str(&format!("{line}\n"));
+                assert_eq!(
+                    line_rows(rope.line(0), width, 4),
+                    wrap_points(line, width, 4).len(),
+                    "{line:?} at {width}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ascii_breaks_like_any_text() {
+        let lines = [
+            "aaaa bbbb cccc dddd",
+            "  indented words that go on and on",
+            "x".repeat(40).as_str(),
+            "a b c d e f g h i j k l",
+        ]
+        .map(str::to_owned);
+        for line in &lines {
+            for width in 1..24 {
+                let (mut fast, mut slow) = (Vec::new(), Vec::new());
+                wrap_ascii(line.as_bytes(), width, |at| fast.push(at));
+                wrap_chars(line, width, 4, |at| slow.push(at));
+                assert_eq!(fast, slow, "{line:?} at {width}");
+            }
+        }
     }
 
     #[test]

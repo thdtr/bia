@@ -159,6 +159,7 @@ pub fn word_at(rope: &Rope, at: usize) -> std::ops::Range<usize> {
 pub fn char_width(c: char, column: usize, tab_width: usize) -> usize {
     match c {
         '\t' => tab_width - column % tab_width,
+        ' '..='~' => 1,
         c => c.width().unwrap_or(0).max(usize::from(!c.is_control())),
     }
 }

@@ -43,6 +43,10 @@ const GUTTER_RIGHT: f32 = 18.0;
 const TEXT_LEFT: f32 = 4.0;
 const SCROLLBAR: f32 = 10.0;
 const BLINK: Duration = Duration::from_millis(500);
+/// After this long without typing, the cursor stops blinking and stays
+/// on, so a window you're only reading isn't redrawn twice a second. (A
+/// whole number of blinks, so it stops while shown.)
+const BLINK_FOR: Duration = Duration::from_secs(10);
 
 /// What the editor asks the app to do.
 #[derive(Debug, Clone)]
@@ -225,7 +229,9 @@ impl Focus {
     }
 
     fn cursor_visible(&self) -> bool {
-        self.window && ((self.now - self.since).as_millis() / BLINK.as_millis()).is_multiple_of(2)
+        let shown = self.now - self.since;
+        self.window
+            && (shown >= BLINK_FOR || (shown.as_millis() / BLINK.as_millis()).is_multiple_of(2))
     }
 }
 
@@ -641,8 +647,11 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                     && focus.window
                 {
                     focus.now = *now;
-                    let phase = (focus.now - focus.since).as_millis() % BLINK.as_millis();
-                    shell.request_redraw_at(*now + BLINK - Duration::from_millis(phase as u64));
+                    let shown = focus.now - focus.since;
+                    if shown < BLINK_FOR {
+                        let phase = shown.as_millis() % BLINK.as_millis();
+                        shell.request_redraw_at(*now + BLINK - Duration::from_millis(phase as u64));
+                    }
                     let method = self.input_method(state, &m, bounds);
                     shell.request_input_method(&method);
                 }

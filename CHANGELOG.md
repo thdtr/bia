@@ -24,6 +24,14 @@ Notable changes to BIA are listed here. The format is based on
   from 28 ms of work to 7, the same as with a small tree, and the window uses about
   25 MB less.
 - Backups are written in the background instead of while you type.
+- With `soft_wrap` on, measuring where lines wrap is 1.7 to 4 times faster, which shows
+  when resizing the window over a long file.
+- The git branch and changed files come from one `git` call instead of three. Folders
+  opened through a symlink now get their git colors in the tree.
+- The cursor stops blinking 10 seconds after you stop typing, so an idle window isn't
+  redrawn twice a second.
+- Undo keeps fewer steps when they hold more than 128 MB of text, so a few "replace
+  all" in a big file can't take memory without limit.
 - Language servers get just the edited ranges when they support it (most do), instead
   of the whole file after every pause, and messages to them are written on a thread of
   their own, so a busy server can no longer freeze the window.

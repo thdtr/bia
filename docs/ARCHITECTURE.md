@@ -140,7 +140,7 @@ few things an editor can't really do without:
 
 | Feature | Why |
 |---|---|
-| Undo and redo, grouped by word | Restores the selections too. |
+| Undo and redo, grouped by word | Restores the selections too. Keeps the last 5,000 steps, or fewer when they hold more than 128 MB of text. |
 | Several cursors | `Ctrl+D`, `Ctrl+Shift+L`, `Ctrl+Alt+↑/↓`, Alt+click. Every command works with all of them. |
 | Find and replace (`Ctrl+F`, `Ctrl+H`) | You need to search inside a file, and renaming by hand is slow. |
 | Indentation that follows the file | BIA detects tabs or spaces and the width, keeps the indent on Enter and adds a level after `{`, `[` or `(`. |
