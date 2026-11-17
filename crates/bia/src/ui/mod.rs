@@ -175,6 +175,11 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
     };
 
     let mut right = row![].spacing(18).align_y(Alignment::Center);
+    if let Some(branch) = &app.git.branch {
+        let icon = explorer::icon(crate::icons::get("git"), c.muted);
+        right = right
+            .push(row![icon, hint(app, branch.as_str())].spacing(4).align_y(Alignment::Center));
+    }
     if let Some(tab) = app.tabs.active()
         && let Some(buffer) = tab.buffer()
     {

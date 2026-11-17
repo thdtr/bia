@@ -21,6 +21,8 @@ pub struct Colors {
     pub selection: Color,
     pub hover: Color,
     pub danger: Color,
+    pub added: Color,
+    pub modified: Color,
 }
 
 fn color(c: Rgba) -> Color {
@@ -40,6 +42,8 @@ impl Colors {
             selection: color(ui.selection),
             hover: color(ui.hover),
             danger: color(ui.danger),
+            added: color(ui.added.unwrap_or(ui.accent)),
+            modified: color(ui.modified.unwrap_or(ui.accent)),
         }
     }
 

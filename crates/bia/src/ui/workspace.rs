@@ -215,6 +215,7 @@ fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a
     )
     .font(app.look.editor_font, app.settings.font_size, app.settings.line_height)
     .matches(matches, current)
+    .git(&buffer.git)
     .wrap(app.settings.soft_wrap)
     .scroll(hasher.finish(), tab.scroll, buffer.center)
     .into();

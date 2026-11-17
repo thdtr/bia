@@ -18,6 +18,7 @@ pub mod editing;
 pub mod editor;
 pub mod fs_ops;
 pub mod fuzzy;
+pub mod git;
 pub mod i18n;
 pub mod indent;
 pub mod language;

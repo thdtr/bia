@@ -8,11 +8,13 @@
 
 mod row;
 
+use crate::buffer::GitMarks;
 use crate::fonts;
 use crate::keys::{self, Command};
 use crate::syntax::{self, Highlights, LineStyle};
 use crate::ui::style::Colors;
 use bia_core::editor::{DisplayMap, Editor, Motion, Selection, Unit};
+use bia_core::git::Mark;
 use iced::advanced::Renderer as _;
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer::{self, Quad};
@@ -76,6 +78,7 @@ pub struct CodeView<'a, Message> {
     syntax: syntax::Context<'a>,
     matches: &'a [Range<usize>],
     current_match: Option<usize>,
+    git: Option<&'a RefCell<GitMarks>>,
     font: Font,
     size: f32,
     line_height: f32,
@@ -110,6 +113,7 @@ impl<'a, Message> CodeView<'a, Message> {
             syntax,
             matches: &[],
             current_match: None,
+            git: None,
             font: Font::MONOSPACE,
             size: 14.0,
             line_height: 1.5,
@@ -131,6 +135,12 @@ impl<'a, Message> CodeView<'a, Message> {
     /// Search matches to light up, and which one is current.
     pub fn matches(mut self, matches: &'a [Range<usize>], current: Option<usize>) -> Self {
         (self.matches, self.current_match) = (matches, current);
+        self
+    }
+
+    /// Lines changed since the last commit, shown in the gutter.
+    pub fn git(mut self, git: &'a RefCell<GitMarks>) -> Self {
+        self.git = Some(git);
         self
     }
 
@@ -945,7 +955,41 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
 
         // Line numbers.
         let gutter = Rectangle::new(bounds.position(), Size::new(m.gutter, bounds.height));
+        let marks: Vec<Mark> =
+            self.git.map(|g| g.borrow_mut().marks(self.editor).to_vec()).unwrap_or_default();
         renderer.with_layer(gutter, |renderer| {
+            // Changes since the last commit: a bar beside the line numbers,
+            // or a wedge where lines were deleted.
+            for (row, r, ..) in &rows {
+                for mark in &marks {
+                    let (color, hit) = match *mark {
+                        Mark::Added { start, end } => (c.added, (start..end).contains(&r.line)),
+                        Mark::Modified { start, end } => {
+                            (c.modified, (start..end).contains(&r.line))
+                        }
+                        Mark::Deleted { .. } => continue,
+                    };
+                    if hit {
+                        let rect = Rectangle::new(
+                            Point::new(bounds.x + 4.0, row_y(*row)),
+                            Size::new(3.0, m.line),
+                        );
+                        fill(renderer, rect, color);
+                    }
+                }
+            }
+            for mark in &marks {
+                if let Mark::Deleted { at } = *mark
+                    && let Some((row, ..)) =
+                        rows.iter().find(|(_, r, ..)| r.line == at && r.start == 0)
+                {
+                    let rect = Rectangle::new(
+                        Point::new(bounds.x + 2.0, row_y(*row) - 2.0),
+                        Size::new(8.0, 4.0),
+                    );
+                    fill(renderer, rect, c.danger);
+                }
+            }
             for (row, line, paragraph) in &numbers {
                 let color = if *line == current_line && focused { c.text } else { c.muted };
                 let x = bounds.x + m.gutter - GUTTER_RIGHT - paragraph.min_width();

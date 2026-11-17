@@ -68,6 +68,7 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Português e inglês
 - Salvamento seguro: gravação atômica, quebras de linha mantidas, arquivo apagado vai para a lixeira
 - Reabre os arquivos que estavam abertos e recupera o que não foi salvo depois de um travamento
+- Git: linhas alteradas ao lado dos números, arquivos alterados na árvore, a branch
 
 ## Sem código de rede
 

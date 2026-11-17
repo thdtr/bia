@@ -63,6 +63,12 @@ Some things are outside that:
   the alt text instead.
 * **Network drives.** If you open a folder on NFS or SMB, your OS does the network
   I/O. BIA only reads the files.
+* **Programs BIA runs for you.** BIA runs `git` to show the branch and what changed.
+  Those calls only read the repository on your disk, and every one turns off what
+  could make git start other programs or reach a server: hooks, the fsmonitor
+  daemon and every transport (`protocol.allow=never`). Programs are separate from
+  BIA, so what they do is up to them, but none of these calls asks git to use the
+  network.
 * **Builds from somewhere else.** This only holds for builds of this code. Build it
   yourself, or check that a release file came from this repository's CI:
 

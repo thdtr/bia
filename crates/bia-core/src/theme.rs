@@ -48,6 +48,14 @@ pub struct Ui {
     pub hover: Rgba,
     /// Errors and destructive actions.
     pub danger: Rgba,
+    /// Lines and files added since the last commit. Optional: the accent
+    /// when missing.
+    #[serde(default)]
+    pub added: Option<Rgba>,
+    /// Lines and files changed since the last commit. Optional: the accent
+    /// when missing.
+    #[serde(default)]
+    pub modified: Option<Rgba>,
 }
 
 /// A syntax color, either `"#rrggbb"` or `{ "color": "#rrggbb", "italic": true }`.

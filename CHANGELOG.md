@@ -32,6 +32,11 @@ Notable changes to BIA are listed here. The format is based on
 - `Ctrl+C` and `Ctrl+X` with nothing selected take the whole line, and pasting it
   puts it above the cursor's line.
 - `Ctrl+Backspace` and `Ctrl+Delete` delete a word.
+- Git: bars beside the line numbers show lines added or changed since the last
+  commit, and a mark shows where lines were deleted. Changed and new files are
+  colored in the tree, and the status bar shows the branch. BIA runs your `git` for
+  this, only for reading, with hooks, fsmonitor and network transports turned off.
+  Themes can set `added` and `modified` colors.
 - `"soft_wrap": true` wraps long lines at the edge of the window. Up and Down then
   move by rows on screen.
 

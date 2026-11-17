@@ -6,6 +6,7 @@ use crate::keys::Command;
 use crate::syntax::Highlights;
 use bia_core::document::{Document, LineEnding};
 use bia_core::editor::{DisplayMap, Editor, Motion};
+use bia_core::git::{self, Mark};
 use bia_core::indent::Indent;
 use iced::widget::markdown;
 use std::cell::RefCell;
@@ -30,6 +31,43 @@ pub struct Buffer {
     pub display: RefCell<DisplayMap>,
     /// A new value asks the view to center the cursor (go to line).
     pub center: u64,
+    /// The text as of the last commit, for the gutter's change marks.
+    pub git: RefCell<GitMarks>,
+}
+
+/// Lines changed since the last commit, worked out again when the text
+/// changes.
+#[derive(Default)]
+pub struct GitMarks {
+    base: Option<String>,
+    revision: Option<u64>,
+    marks: Vec<Mark>,
+}
+
+/// Past this many lines, the gutter goes without git marks: the diff would
+/// slow down typing.
+const GIT_MARK_LINES: usize = 50_000;
+
+impl GitMarks {
+    pub fn set_base(&mut self, base: Option<String>) {
+        if self.base != base {
+            self.base = base;
+            self.revision = None;
+        }
+    }
+
+    pub fn marks(&mut self, editor: &Editor) -> &[Mark] {
+        if self.revision != Some(editor.revision()) {
+            self.revision = Some(editor.revision());
+            self.marks = match &self.base {
+                Some(base) if editor.line_count() <= GIT_MARK_LINES => {
+                    git::marks(base, &editor.text())
+                }
+                _ => Vec::new(),
+            };
+        }
+        &self.marks
+    }
 }
 
 /// What an input asks of the app besides changing the text.
@@ -58,6 +96,7 @@ impl Buffer {
             markdown_revision: 0,
             highlights: RefCell::default(),
             center: 0,
+            git: RefCell::default(),
         }
     }
 
@@ -88,7 +127,9 @@ impl Buffer {
         let (syntax, indent) = (old.syntax.clone(), old.indent);
         let (auto_close, tab_width) = (old.auto_close, old.tab_width);
         let preview = self.markdown.is_some();
+        let git = self.git.take();
         *self = Self::new(doc, syntax, indent);
+        self.git = RefCell::new(git);
         self.editor.auto_close = auto_close;
         self.editor.tab_width = tab_width;
         if preview {

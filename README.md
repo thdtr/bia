@@ -66,6 +66,7 @@ The install commands above don't trigger this warning.
 - English and Portuguese
 - Safe saves: atomic writes, line endings kept, deleted files go to the trash
 - Reopens the files you left open, and brings back unsaved edits after a crash
+- Git: changed lines beside the line numbers, changed files in the tree, the branch
 
 ## No network code
 

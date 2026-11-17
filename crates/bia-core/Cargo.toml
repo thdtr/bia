@@ -34,6 +34,8 @@ ropey = { version = "1.6", default-features = false, features = ["simd"] }
 unicode-segmentation = "1"
 # How many columns a character takes: 2 for CJK and most emoji.
 unicode-width = "0.2"
+# Line diffs for the git marks in the gutter. No dependencies of its own.
+similar = { version = "2", default-features = false, features = ["text"] }
 
 [lints]
 workspace = true

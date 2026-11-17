@@ -7,7 +7,7 @@
 use super::{hint, label, style};
 use crate::app::{Bia, Message, PROMPT_ID, Prompt, PromptKind, Shelf, ShelfAction};
 use crate::icons;
-use bia_core::tree;
+use bia_core::{git, tree};
 use iced::widget::{
     Column, button, column, container, mouse_area, row, rule, scrollable, space, svg, text,
     text_input,
@@ -58,7 +58,15 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
             space().width(INDENT * entry.depth as f32),
             chevron,
             icon(kind_icon, if is_open { c.accent } else { c.muted }),
-            label(app, entry.name.as_str()).wrapping(text::Wrapping::None),
+            {
+                let name = label(app, entry.name.as_str()).wrapping(text::Wrapping::None);
+                match app.git.files.get(&entry.path) {
+                    Some(git::FileStatus::Modified) => name.color(c.modified),
+                    Some(git::FileStatus::Added) => name.color(c.added),
+                    Some(git::FileStatus::Conflict) => name.color(c.danger),
+                    None => name,
+                }
+            },
         ]
         .spacing(4)
         .align_y(Alignment::Center);

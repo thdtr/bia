@@ -10,7 +10,9 @@
     "accent": "#3fb59b",
     "selection": "#3fb59b33",
     "hover": "#1e1c24",
-    "danger": "#e5736b"
+    "danger": "#e5736b",
+    "added": "#8fb573",
+    "modified": "#d6a85c"
   },
   "syntax": {
     "comment": { "color": "#6a6474", "italic": true },

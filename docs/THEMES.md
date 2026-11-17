@@ -40,7 +40,9 @@ it.
     "accent":     "#3fb59b", // the one accent
     "selection":  "#3fb59b33",
     "hover":      "#1e1c24", // hovered/selected rows, code blocks
-    "danger":     "#e5736b"  // errors, "move to trash"
+    "danger":     "#e5736b", // errors, "move to trash"
+    "added":      "#8fb573", // optional: new lines and files (git)
+    "modified":   "#d6a85c"  // optional: changed lines and files (git)
   },
   "syntax": {
     "comment": { "color": "#6a6474", "italic": true },

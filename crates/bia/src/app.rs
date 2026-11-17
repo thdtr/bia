@@ -19,6 +19,7 @@ use bia_core::backup::{self, Backup};
 use bia_core::document::{self, Document, LoadError};
 use bia_core::fs_ops::{self, FsError};
 use bia_core::fuzzy;
+use bia_core::git;
 use bia_core::indent::Indent;
 use bia_core::language::{
     self,
@@ -90,6 +91,10 @@ pub enum Message {
     FolderPicked(Option<PathBuf>),
     OpenRecent(PathBuf),
     BackupTick,
+    /// A file's text as of the last commit (`None`: not committed).
+    GitBase(PathBuf, Option<String>),
+    /// The branch and changed files of the folder that's open.
+    GitStatus(PathBuf, Arc<git::Status>),
     RowPressed(PathBuf),
     RowContext(PathBuf),
     ToggleShelf,
@@ -292,6 +297,8 @@ pub struct Bia {
     pub sidebar: bool,
     pub panel: Panel,
     pub project_search: ProjectSearch,
+    /// What git says about the open folder; empty outside a repository.
+    pub git: Arc<git::Status>,
     pub dialog: Option<Dialog>,
     /// `font_size` as settings.json has it, while zoom changes the live one.
     font_size_setting: f32,
@@ -330,6 +337,7 @@ impl Bia {
             sidebar: true,
             panel: Panel::Files,
             project_search: ProjectSearch::default(),
+            git: Arc::default(),
             dialog: None,
         };
         if let Some(e) = settings_error {
@@ -557,6 +565,19 @@ impl Bia {
             }
             Message::Save => {
                 self.save(self.tabs.active_index(), false);
+                return self.refresh_git();
+            }
+            Message::GitBase(path, base) => {
+                if let Some(buffer) =
+                    self.tabs.position(&path).and_then(|i| self.tabs.get_mut(i)?.buffer_mut())
+                {
+                    buffer.git.borrow_mut().set_base(base);
+                }
+            }
+            Message::GitStatus(root, status) => {
+                if self.tree.as_ref().is_some_and(|t| t.root() == root) {
+                    self.git = status;
+                }
             }
             Message::TogglePreview => {
                 let is_md = self.tabs.active().is_some_and(|t| self.is_markdown(t));
@@ -657,7 +678,11 @@ impl Bia {
             }
 
             Message::Shortcut(shortcut) => return self.shortcut(shortcut),
-            Message::WindowFocused => self.on_focus(),
+            Message::WindowFocused => {
+                self.on_focus();
+                // Commits and checkouts happen in other windows.
+                return self.refresh_git();
+            }
             Message::CloseRequested => {
                 if self.tabs.any_dirty() {
                     self.dialog = Some(Dialog::Quit);
@@ -795,10 +820,35 @@ impl Bia {
         self.selected = None;
         self.shelf = Shelf::Hidden;
         self.project_search = ProjectSearch::default();
+        self.git = Arc::default();
         if !remember || !self.tabs.is_empty() {
-            return Task::none();
+            return self.refresh_git();
         }
-        self.restore_session(&root, session.unwrap_or_default())
+        let restore = self.restore_session(&root, session.unwrap_or_default());
+        Task::batch([restore, self.refresh_git()])
+    }
+
+    // ── Git ──────────────────────────────────────────────────────────────
+
+    /// Asks git, in the background, for the folder's status and for the
+    /// committed text of every open file.
+    fn refresh_git(&self) -> Task<Message> {
+        let mut tasks: Vec<Task<Message>> = self
+            .tabs
+            .iter()
+            .filter(|t| t.buffer().is_some())
+            .map(|t| git_base(t.path.clone()))
+            .collect();
+        if let Some(root) = self.tree.as_ref().map(|t| t.root().to_path_buf()) {
+            tasks.push(Task::perform(
+                {
+                    let root = root.clone();
+                    async move { Arc::new(git::status(&root)) }
+                },
+                move |status| Message::GitStatus(root.clone(), status),
+            ));
+        }
+        Task::batch(tasks)
     }
 
     /// Reopens a folder's files where their cursors were, then any file in
@@ -940,9 +990,11 @@ impl Bia {
         };
         let mut tab = Tab::new(path, body);
         tab.backup = backup;
+        let is_text = matches!(tab.body, Body::Text(_));
+        let base = is_text.then(|| git_base(tab.path.clone()));
         self.tabs.insert(tab);
         self.reveal_active();
-        operation::focus(EDITOR_ID)
+        Task::batch([operation::focus(EDITOR_ID)].into_iter().chain(base))
     }
 
     /// Puts back unsaved edits to `path` left in `backups/`.
@@ -1559,6 +1611,17 @@ impl Bia {
 fn relative_path(root: &Path, path: &Path) -> Option<String> {
     let relative = path.strip_prefix(root).ok()?;
     Some(relative.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>().join("/"))
+}
+
+/// The committed text of `path`, read in the background.
+fn git_base(path: PathBuf) -> Task<Message> {
+    Task::perform(
+        {
+            let path = path.clone();
+            async move { git::head_text(&path) }
+        },
+        move |base| Message::GitBase(path.clone(), base),
+    )
 }
 
 /// Waits without blocking the executor's threads.
