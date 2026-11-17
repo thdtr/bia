@@ -15,12 +15,13 @@
 mod explorer;
 pub mod layout;
 mod palette;
+mod search;
 pub mod style;
 mod workspace;
 
-use crate::app::{Bia, Choice, Dialog, Message};
+use crate::app::{Bia, Choice, Dialog, Message, Panel};
 use iced::widget::{
-    Text, button, center, column, container, opaque, row, rule, space, stack, text,
+    Text, button, center, column, container, opaque, row, rule, space, stack, text, tooltip,
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
@@ -31,7 +32,10 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     } else {
         let mut main = row![];
         if app.sidebar && app.tree.is_some() {
-            main = main.push(explorer::view(app));
+            main = main.push(match app.panel {
+                Panel::Files => explorer::view(app),
+                Panel::Search => search::view(app),
+            });
             main = main.push(rule::vertical(1).style(style::rule(c)));
         }
         main.push(workspace::view(app)).height(Fill).into()
@@ -63,6 +67,32 @@ pub(crate) fn hint<'a>(app: &Bia, content: impl text::IntoFragment<'a>) -> Text<
         .color(app.look.colors.muted)
 }
 
+/// A search option (match case, whole word, regex): a symbol lit when on,
+/// with its name on hover.
+pub(crate) fn option_toggle<'a>(
+    app: &'a Bia,
+    symbol: &'a str,
+    name: &str,
+    on: bool,
+    message: Message,
+) -> Element<'a, Message> {
+    let c = app.look.colors;
+    let face = text(symbol)
+        .font(app.look.editor_font)
+        .size(app.settings.ui_font_size - 1.0)
+        .color(if on { c.accent } else { c.muted });
+    let button = button(face).padding([3, 6]).style(style::outlined(c, on)).on_press(message);
+    tooltip(button, tip(app, app.look.i18n.t(name).to_owned()), tooltip::Position::Bottom).into()
+}
+
+/// The small card a tooltip shows.
+pub(crate) fn tip(app: &Bia, content: String) -> Element<'_, Message> {
+    container(hint(app, content).color(app.look.colors.text))
+        .padding([4, 8])
+        .style(style::card(app.look.colors))
+        .into()
+}
+
 /// The logo at the given height (`assets/logo.svg`, in theme colors).
 pub(crate) fn logo(app: &Bia, height: f32) -> Element<'_, Message> {
     // The logo's viewBox is about 2.7 times wider than it is tall.
@@ -88,18 +118,40 @@ fn welcome(app: &Bia) -> Element<'_, Message> {
         .on_press(message)
     };
 
-    let content = column![
+    let mut content = column![
         logo(app, 64.0),
         space().height(6.0),
         hint(app, t.t("app.tagline")),
         space().height(28),
         shortcut_button(t.t("welcome.open_folder"), "Ctrl+O", Message::OpenFolder, true),
         shortcut_button(t.t("welcome.settings"), "Ctrl+,", Message::OpenSettings, false),
-        space().height(36),
-        hint(app, t.t("app.sealed")),
     ]
     .spacing(10)
     .align_x(Alignment::Center);
+
+    if !app.recent.is_empty() {
+        let mut recent = column![hint(app, t.t("welcome.recent"))].spacing(2).width(260);
+        for folder in app.recent.iter().take(5) {
+            let parent = folder.parent().map(|p| p.display().to_string()).unwrap_or_default();
+            let name = bia_core::tree::display_name(folder);
+            recent = recent.push(
+                button(
+                    row![
+                        label(app, name).wrapping(text::Wrapping::None),
+                        hint(app, parent).wrapping(text::Wrapping::None),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                )
+                .width(Fill)
+                .padding([4, 6])
+                .style(style::row(c, false))
+                .on_press(Message::OpenRecent(folder.clone())),
+            );
+        }
+        content = content.push(space().height(18)).push(recent);
+    }
+    content = content.push(space().height(36)).push(hint(app, t.t("app.sealed")));
 
     center(content).into()
 }

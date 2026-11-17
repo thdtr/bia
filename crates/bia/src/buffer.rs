@@ -7,6 +7,7 @@
 //! and pasted text is normalized.
 
 use bia_core::document::{Document, LineEnding};
+use bia_core::editing::{self, LineEdit};
 use bia_core::history::{Change, History};
 use bia_core::indent::Indent;
 use bia_core::text::{self, Pos};
@@ -34,6 +35,8 @@ pub struct Buffer {
     pub syntax: String,
     /// What Tab, Shift+Tab, Enter and Backspace indent with.
     pub indent: Indent,
+    /// Typing an opening bracket or quote also types the closing one.
+    pub auto_close: bool,
     /// Parsed Markdown, kept only while the preview is open.
     pub markdown: Option<markdown::Content>,
     /// `"1\n2\n3…"` for the line-number gutter, rebuilt when the count changes.
@@ -41,6 +44,9 @@ pub struct Buffer {
     pub line_count: usize,
     /// Widest line in monospace cells, to size the horizontal scroll area.
     pub max_columns: usize,
+    /// Goes up with every change to the text, so callers can tell whether
+    /// it changed since they last looked.
+    pub revision: u64,
 }
 
 fn to_widget(p: Pos) -> Position {
@@ -64,10 +70,12 @@ impl Buffer {
             modified: doc.modified,
             syntax,
             indent,
+            auto_close: true,
             markdown: None,
             gutter: String::new(),
             line_count: 0,
             max_columns: 0,
+            revision: 0,
         };
         buffer.refresh_metrics();
         buffer
@@ -103,7 +111,9 @@ impl Buffer {
     pub fn reload(&mut self, doc: Document) {
         let syntax = std::mem::take(&mut self.syntax);
         let preview = self.markdown.is_some();
+        let auto_close = self.auto_close;
         *self = Self::new(doc, syntax, self.indent);
+        self.auto_close = auto_close;
         if preview {
             self.set_preview(true);
         }
@@ -123,6 +133,8 @@ impl Buffer {
             Action::Edit(Edit::Enter) => return self.newline(),
             Action::Edit(Edit::Indent) => return self.indent(),
             Action::Edit(Edit::Unindent) => return self.outdent(),
+            Action::Edit(Edit::Insert(c)) if self.auto_close && self.type_pair(c) => return,
+            Action::Edit(Edit::Backspace) if self.auto_close && self.delete_pair() => return,
             Action::Edit(Edit::Backspace) if self.backspace_indent() => return,
             _ => {}
         }
@@ -142,6 +154,7 @@ impl Buffer {
         let cursor = text::pos_to_offset(&new, self.cursor_pos());
         if let Some(change) = Change::between(&self.text, &new, Some(cursor)) {
             self.history.record(change, Instant::now());
+            self.revision += 1;
             self.text = new;
             self.refresh_metrics();
             self.refresh_markdown();
@@ -167,6 +180,7 @@ impl Buffer {
             self.content.perform(Action::Edit(Edit::Paste(Arc::new(change.inserted.clone()))));
         }
         change.apply(&mut self.text);
+        self.revision += 1;
         // The widget is the source of truth for what is on screen. Should the
         // two ever disagree, adopt the widget's text rather than drift.
         let shown = self.content.text();
@@ -175,6 +189,15 @@ impl Buffer {
         }
         self.refresh_metrics();
         self.refresh_markdown();
+    }
+
+    /// Puts back edits recovered from a backup, as one undo step on top of
+    /// the file as it is on disk.
+    pub fn recover(&mut self, text: &str) {
+        self.history.seal();
+        self.replace(0..self.text.len(), text);
+        self.history.seal();
+        self.place(Pos::default(), None);
     }
 
     pub fn cursor_pos(&self) -> Pos {
@@ -233,17 +256,17 @@ impl Buffer {
         self.history.seal();
     }
 
-    /// Replaces every range in `ranges` (sorted, not overlapping) with
-    /// `with`, as one undo step. The cursor stays where it was in the text.
-    pub fn replace_all(&mut self, ranges: &[Range<usize>], with: &str) {
-        let (Some(first), Some(last)) = (ranges.first(), ranges.last()) else { return };
+    /// Replaces every range in `edits` (sorted, not overlapping) with its
+    /// text, as one undo step. The cursor stays where it was in the text.
+    pub fn replace_all(&mut self, edits: &[(Range<usize>, String)]) {
+        let (Some((first, _)), Some((last, _))) = (edits.first(), edits.last()) else { return };
         let cursor = self.cursor_offset();
         let mut middle = String::new();
         let mut from = first.start;
         // How far the cursor moves: by every replacement before it, and to
         // the end of the replacement it was inside of.
         let mut new_cursor = cursor as isize;
-        for range in ranges {
+        for (range, with) in edits {
             middle.push_str(&self.text[from..range.start]);
             middle.push_str(with);
             from = range.end;
@@ -351,49 +374,228 @@ impl Buffer {
         // A selection that ends at the start of a line doesn't include it.
         let last = if end.column == 0 && end.line > start.line { end.line - 1 } else { end.line };
         let unit = self.indent.unit();
-        let mut block = String::new();
-        let mut deltas = Vec::new();
-        for (i, n) in (start.line..=last).enumerate() {
-            let line = self.line_text(n);
-            if i > 0 {
-                block.push('\n');
-            }
-            let delta = if !add {
-                let remove = self.indent.outdent(&line);
-                block.push_str(&line[remove..]);
-                -(remove as isize)
-            } else if line.is_empty() {
-                0
-            } else {
-                block.push_str(&unit);
-                block.push_str(&line);
-                unit.len() as isize
-            };
-            deltas.push(delta);
-        }
-        if deltas.iter().all(|&d| d == 0) {
+        let edits: Vec<LineEdit> = (start.line..=last)
+            .enumerate()
+            .filter_map(|(i, n)| {
+                let line = self.line_text(n);
+                let (remove, insert) = if add {
+                    (0, if line.is_empty() { return None } else { unit.clone() })
+                } else {
+                    (self.indent.outdent(&line), String::new())
+                };
+                (remove > 0 || !insert.is_empty()).then_some(LineEdit {
+                    line: i,
+                    at: 0,
+                    remove,
+                    insert,
+                })
+            })
+            .collect();
+        self.edit_lines(start.line, last, &edits);
+    }
+
+    /// Lines the selection covers, or the cursor's line. A selection that
+    /// ends at the start of a line doesn't include that line.
+    fn selected_lines(&self) -> (usize, usize) {
+        let cursor = self.cursor_pos();
+        let (start, end) = self.selection().unwrap_or((cursor, cursor));
+        let last = if end.column == 0 && end.line > start.line { end.line - 1 } else { end.line };
+        (start.line, last)
+    }
+
+    /// Applies `edits` (indexed from `first`) to lines `first..=last` as one
+    /// change, keeping the cursor and selection on the same text.
+    fn edit_lines(&mut self, first: usize, last: usize, edits: &[LineEdit]) {
+        if edits.is_empty() {
             return;
         }
+        let lines: Vec<String> = (first..=last).map(|n| self.line_text(n)).collect();
+        let block: Vec<String> =
+            lines.iter().enumerate().map(|(i, l)| editing::apply_line(l, i, edits)).collect();
         let cursor = self.content.cursor();
-        let range_start = self.offset(Pos { line: start.line, column: 0 });
-        let last_len = self.line_text(last).len();
-        let range_end = self.offset(Pos { line: last, column: last_len });
-        self.replace(range_start..range_end, &block);
+        let start = self.offset(Pos { line: first, column: 0 });
+        let end = self.offset(Pos { line: last, column: lines[lines.len() - 1].len() });
+        self.replace(start..end, &block.join("\n"));
 
         let shift = |p: Position| {
             let p = from_widget(p);
-            let Some(&delta) = p.line.checked_sub(start.line).and_then(|i| deltas.get(i)) else {
+            if p.line < first || p.line > last {
                 return p;
-            };
-            let column = match delta {
-                d if d < 0 => p.column.saturating_sub(d.unsigned_abs()),
-                // Something selected from the start of a line still is.
-                _ if p.column == 0 => 0,
-                d => p.column + d as usize,
-            };
-            Pos { line: p.line, column }
+            }
+            Pos { line: p.line, column: editing::shift_column(p.column, p.line - first, edits) }
         };
         self.place(shift(cursor.position), cursor.selection.map(shift));
+    }
+
+    /// Puts back a cursor and selection saved before an edit, `by` lines
+    /// further down (or up), in the same columns.
+    fn restore_cursor(&mut self, cursor: Cursor, by: isize) {
+        // Past the last line means the end of the text: a selection of
+        // whole lines that moved down onto the last one.
+        let last = self.line_count - 1;
+        let last_len = self.line_text(last).len();
+        let shift = |p: Position| {
+            let line = p.line.saturating_add_signed(by);
+            if line > last {
+                Pos { line: last, column: last_len }
+            } else {
+                Pos { line, column: p.column }
+            }
+        };
+        let (position, anchor) = (shift(cursor.position), cursor.selection.map(shift));
+        self.place(position, anchor);
+    }
+
+    fn line_range(&self, first: usize, last: usize) -> Range<usize> {
+        let end = Pos { line: last, column: self.line_text(last).len() };
+        self.offset(Pos { line: first, column: 0 })..self.offset(end)
+    }
+
+    // ── Commands on whole lines ─────────────────────────────────────────
+
+    /// Ctrl+/. Returns false when BIA doesn't know how this language
+    /// writes comments.
+    pub fn toggle_comment(&mut self) -> bool {
+        let Some(comments) = editing::comments(&self.syntax) else { return false };
+        let (first, last) = self.selected_lines();
+        let lines: Vec<String> = (first..=last).map(|n| self.line_text(n)).collect();
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let edits = editing::toggle_comment(&refs, comments);
+        self.history.seal();
+        self.edit_lines(first, last, &edits);
+        self.history.seal();
+        true
+    }
+
+    /// Shift+Alt+Down / Up: copies the lines below them. Down moves the
+    /// cursor to the copy; Up leaves it on the original, which is now above.
+    pub fn duplicate_lines(&mut self, down: bool) {
+        let (first, last) = self.selected_lines();
+        let block = self.text[self.line_range(first, last)].to_owned();
+        let end = self.line_range(first, last).end;
+        let cursor = self.content.cursor();
+        self.history.seal();
+        self.replace(end..end, &format!("\n{block}"));
+        self.restore_cursor(cursor, if down { (last - first + 1) as isize } else { 0 });
+        self.history.seal();
+    }
+
+    /// Alt+Up / Down: swaps the lines with the one above or below.
+    pub fn move_lines(&mut self, up: bool) {
+        let (first, last) = self.selected_lines();
+        if (up && first == 0) || (!up && last + 1 >= self.line_count) {
+            return;
+        }
+        let block = self.text[self.line_range(first, last)].to_owned();
+        let (range, new) = if up {
+            let above = self.line_text(first - 1);
+            (self.line_range(first - 1, last), format!("{block}\n{above}"))
+        } else {
+            let below = self.line_text(last + 1);
+            (self.line_range(first, last + 1), format!("{below}\n{block}"))
+        };
+        let cursor = self.content.cursor();
+        self.history.seal();
+        self.replace(range, &new);
+        self.restore_cursor(cursor, if up { -1 } else { 1 });
+        self.history.seal();
+    }
+
+    /// Ctrl+Shift+K: deletes the lines, leaving the cursor in its column on
+    /// the line that takes their place.
+    pub fn delete_lines(&mut self) {
+        let (first, last) = self.selected_lines();
+        let column = self.cursor_pos().column;
+        let range = if last + 1 < self.line_count {
+            self.offset(Pos { line: first, column: 0 })
+                ..self.offset(Pos { line: last + 1, column: 0 })
+        } else if first > 0 {
+            self.line_range(first - 1, last).start + self.line_text(first - 1).len()
+                ..self.text.len()
+        } else {
+            0..self.text.len()
+        };
+        self.history.seal();
+        self.replace(range, "");
+        let line = first.min(self.line_count - 1);
+        let offset = self.offset(Pos { line, column });
+        self.place(text::offset_to_pos(&self.text, offset), None);
+        self.history.seal();
+    }
+
+    /// Ctrl+L: selects the cursor's line, or one more line each time.
+    pub fn select_lines(&mut self) {
+        let (first, last) = match self.selection() {
+            Some((s, e)) if s.column == 0 && e.column == 0 => (s.line, e.line),
+            _ => self.selected_lines(),
+        };
+        let end = if last + 1 < self.line_count {
+            Pos { line: last + 1, column: 0 }
+        } else {
+            Pos { line: last, column: self.line_text(last).len() }
+        };
+        self.place(end, Some(Pos { line: first, column: 0 }));
+        self.history.seal();
+    }
+
+    // ── Brackets and quotes ─────────────────────────────────────────────
+
+    fn around_cursor(&self) -> (Option<char>, Option<char>) {
+        let at = self.cursor_offset();
+        (self.text[..at].chars().next_back(), self.text[at..].chars().next())
+    }
+
+    /// Typing a bracket or quote: wraps a selection, steps over the closing
+    /// half when it is next, or types both halves. Returns false when
+    /// `c` should be typed as usual.
+    fn type_pair(&mut self, c: char) -> bool {
+        let close = editing::closing(c);
+        if let (Some(close), Some((start, end))) = (close, self.selection()) {
+            let (s, e) = (self.offset(start), self.offset(end));
+            let wrapped = format!("{c}{}{close}", &self.text[s..e]);
+            self.history.seal();
+            self.replace(s..e, &wrapped);
+            let n = c.len_utf8();
+            let anchor = text::offset_to_pos(&self.text, s + n);
+            self.place(text::offset_to_pos(&self.text, e + n), Some(anchor));
+            self.history.seal();
+            return true;
+        }
+        if self.selection().is_some() {
+            return false;
+        }
+        let (before, after) = self.around_cursor();
+        // Step over a closing half instead of doubling it. For quotes, only
+        // right after text, so a quote typed before a string opens a new one.
+        let step_over = after == Some(c)
+            && (")]}".contains(c)
+                || (editing::is_quote(c) && before.is_some_and(|b| !b.is_whitespace())));
+        if step_over {
+            self.content.perform(Action::Move(Motion::Right));
+            return true;
+        }
+        let Some(close) = close.filter(|_| editing::should_close(c, before, after, &self.syntax))
+        else {
+            return false;
+        };
+        let at = self.cursor_offset();
+        self.replace(at..at, &format!("{c}{close}"));
+        self.place(text::offset_to_pos(&self.text, at + c.len_utf8()), None);
+        true
+    }
+
+    /// Backspace between `(` and `)` (or two quotes) deletes both.
+    fn delete_pair(&mut self) -> bool {
+        if self.selection().is_some() {
+            return false;
+        }
+        let (Some(before), Some(after)) = self.around_cursor() else { return false };
+        if editing::closing(before) != Some(after) {
+            return false;
+        }
+        let at = self.cursor_offset();
+        self.replace(at - before.len_utf8()..at + after.len_utf8(), "");
+        true
     }
 
     /// Backspace in leading spaces deletes back to the previous tab stop.
@@ -531,8 +733,8 @@ mod tests {
     fn replace_all_keeps_the_cursor() {
         let mut b = buffer("foo bar foo baz");
         b.perform(Action::Move(Motion::DocumentEnd));
-        let ranges = text::find_all(b.text(), "foo");
-        b.replace_all(&ranges, "x");
+        let m = bia_core::search::Matcher::new("foo", Default::default()).unwrap();
+        b.replace_all(&m.replacements(b.text(), "x"));
         assert_eq!(b.text(), "x bar x baz");
         assert_eq!(b.cursor_offset(), b.text().len());
         assert_in_sync(&b, &"replace all");
@@ -553,6 +755,19 @@ mod tests {
     }
 
     #[test]
+    fn recovered_text_is_one_undo_step() {
+        let mut b = buffer("a\nb");
+        let before = b.revision;
+        b.recover("a\nb\nc");
+        assert!(b.is_dirty());
+        assert!(b.revision > before);
+        assert_in_sync(&b, &"recover");
+        b.undo();
+        assert_eq!(b.text(), "a\nb");
+        assert!(!b.is_dirty());
+    }
+
+    #[test]
     fn pasted_line_breaks_are_normalized() {
         let mut b = buffer("");
         b.perform(Action::Edit(Edit::Paste(Arc::new("a\r\nb\rc".to_owned()))));
@@ -560,6 +775,120 @@ mod tests {
         assert_in_sync(&b, &"paste");
         b.undo();
         assert_eq!(b.text(), "");
+    }
+
+    fn rust(text: &str) -> Buffer {
+        let mut b = buffer(text);
+        b.syntax = "Rust".into();
+        b
+    }
+
+    #[test]
+    fn toggle_comment_keeps_the_selection() {
+        let mut b = rust("fn a() {\n    x();\n}\n");
+        b.perform(Action::Move(Motion::Down));
+        b.perform(Action::Move(Motion::End));
+        assert!(b.toggle_comment());
+        assert_eq!(b.text(), "fn a() {\n    // x();\n}\n");
+        assert_eq!(b.cursor_pos(), Pos { line: 1, column: 11 });
+        assert!(b.toggle_comment());
+        assert_eq!(b.text(), "fn a() {\n    x();\n}\n");
+        assert_in_sync(&b, &"comment");
+
+        b.perform(Action::SelectAll);
+        b.toggle_comment();
+        assert_eq!(b.text(), "// fn a() {\n//     x();\n// }\n");
+        b.undo();
+        assert_eq!(b.text(), "fn a() {\n    x();\n}\n");
+        assert!(!buffer("x").toggle_comment());
+    }
+
+    #[test]
+    fn line_commands() {
+        let mut b = buffer("a\nb\nc");
+        b.perform(Action::Move(Motion::Down));
+        b.move_lines(true);
+        assert_eq!(b.text(), "b\na\nc");
+        assert_eq!(b.cursor_pos().line, 0);
+        b.move_lines(true);
+        assert_eq!(b.text(), "b\na\nc");
+        b.move_lines(false);
+        b.move_lines(false);
+        assert_eq!(b.text(), "a\nc\nb");
+        assert_eq!(b.cursor_pos().line, 2);
+        b.move_lines(false);
+        assert_eq!(b.text(), "a\nc\nb");
+        assert_in_sync(&b, &"move");
+
+        b.duplicate_lines(true);
+        assert_eq!(b.text(), "a\nc\nb\nb");
+        assert_eq!(b.cursor_pos().line, 3);
+        b.delete_lines();
+        b.delete_lines();
+        assert_eq!(b.text(), "a\nc");
+        assert_eq!(b.cursor_pos().line, 1);
+        b.perform(Action::Move(Motion::DocumentStart));
+        b.delete_lines();
+        assert_eq!(b.text(), "c");
+        b.delete_lines();
+        assert_eq!(b.text(), "");
+        assert_in_sync(&b, &"delete");
+        while b.undo() {}
+        assert_eq!(b.text(), "a\nb\nc");
+    }
+
+    #[test]
+    fn select_lines_grows() {
+        let mut b = buffer("a\nb\nc");
+        b.select_lines();
+        assert_eq!(b.selection_range(), Some(0..2));
+        b.select_lines();
+        assert_eq!(b.selection_range(), Some(0..4));
+        b.select_lines();
+        assert_eq!(b.selection_range(), Some(0..5));
+        // A selected block moves as a whole.
+        b.perform(Action::Move(Motion::DocumentStart));
+        b.select_lines();
+        b.move_lines(false);
+        assert_eq!(b.text(), "b\na\nc");
+        assert_eq!(b.selection_range(), Some(2..4));
+    }
+
+    #[test]
+    fn brackets_and_quotes_close() {
+        let mut b = rust("");
+        type_text(&mut b, "f(\"x");
+        assert_eq!(b.text(), "f(\"x\")");
+        type_text(&mut b, "\")");
+        assert_eq!(b.text(), "f(\"x\")");
+        assert_eq!(b.cursor_offset(), b.text().len());
+        // Lifetimes stay single.
+        type_text(&mut b, " 'a");
+        assert_eq!(b.text(), "f(\"x\") 'a");
+        assert_in_sync(&b, &"pairs");
+
+        let mut b = rust("");
+        type_text(&mut b, "[");
+        b.perform(Action::Edit(Edit::Backspace));
+        assert_eq!(b.text(), "");
+        // Before a word, a bracket is just a bracket.
+        let mut b = rust("x");
+        type_text(&mut b, "(");
+        assert_eq!(b.text(), "(x");
+
+        // A selection gets wrapped and stays selected.
+        let mut b = rust("a b");
+        b.perform(Action::Select(Motion::WordRight));
+        type_text(&mut b, "[");
+        assert_eq!(b.text(), "[a] b");
+        assert_eq!(b.selection_range(), Some(1..2));
+        b.undo();
+        assert_eq!(b.text(), "a b");
+
+        let mut b = rust("");
+        b.auto_close = false;
+        type_text(&mut b, "(");
+        assert_eq!(b.text(), "(");
     }
 
     struct Rng(u64);
@@ -592,14 +921,42 @@ mod tests {
             Motion::DocumentStart,
             Motion::DocumentEnd,
         ];
-        let chars = ['a', ' ', 'é', '日', '(', '\t'];
+        let chars = ['a', ' ', 'é', '日', '(', ')', '"', '\'', '[', '\t'];
         let pastes = ["foo\nbar", "ç", "", "    indented\n\n", "win\r\ndows", "old\rmac"];
 
         for seed in 0..150 {
             let mut rng = Rng(seed * 7919 + 1);
-            let mut b = buffer(original);
+            let mut b = rust(original);
             let mut log = Vec::new();
             for _ in 0..60 {
+                let command = rng.below(100);
+                if command < 12 {
+                    let name = match command {
+                        0..=2 => {
+                            b.toggle_comment();
+                            "comment"
+                        }
+                        3..=5 => {
+                            b.move_lines(command == 3);
+                            "move"
+                        }
+                        6..=7 => {
+                            b.duplicate_lines(command == 6);
+                            "duplicate"
+                        }
+                        8..=9 => {
+                            b.delete_lines();
+                            "delete lines"
+                        }
+                        _ => {
+                            b.select_lines();
+                            "select lines"
+                        }
+                    };
+                    log.push(name.to_owned());
+                    assert_in_sync(&b, &(seed, &log));
+                    continue;
+                }
                 let action = match rng.below(100) {
                     0..=24 => Action::Edit(Edit::Insert(chars[rng.below(chars.len())])),
                     25..=31 => Action::Edit(Edit::Enter),

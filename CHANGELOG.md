@@ -6,13 +6,32 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Find in files (`Ctrl+Shift+F`), in the sidebar. Files your `.gitignore` lists are
+  skipped, and open files are searched with their unsaved edits.
+- Match case, whole word and regular expression options in find, replace and find in
+  files. In regex mode, the replacement can use `$1`.
+- Comment and uncomment lines with `Ctrl+/`.
+- Move lines with `Alt+↑`/`Alt+↓`, duplicate them with `Shift+Alt+↑`/`↓`, delete
+  them with `Ctrl+Shift+K` and select them with `Ctrl+L`.
+- Brackets and quotes close themselves, and wrap the selection. Turn it off with
+  `"auto_close": false`.
+- `Ctrl+=`, `Ctrl+-` and `Ctrl+0` change the editor font size for the session.
+- BIA reopens the files you had open in a folder, with the cursor where it was.
+- Unsaved edits are kept in a backup until you save or discard them. After a crash,
+  BIA opens the file with them.
+- The welcome screen lists recent folders.
+
 ### Changed
 
+- Open file by name (`Ctrl+P`) skips what `.gitignore` lists.
 - MIT is now the only license. Versions up to 0.2.0 remain available under MIT or
   Apache 2.0.
 
 ### Fixed
 
+- Find ignored case only for ASCII letters: `É` didn't find `é`.
 - A file that fits in the editor no longer shows a scrollbar or scrolls a little.
 
 ## [0.2.0] - 2026-11-17

@@ -22,11 +22,13 @@ pub struct Tab {
     pub body: Body,
     /// Where the editor was scrolled to, restored when the tab comes back.
     pub scroll: AbsoluteOffset,
+    /// The buffer revision last written to `backups/`, if there's a backup.
+    pub backup: Option<u64>,
 }
 
 impl Tab {
     pub fn new(path: PathBuf, body: Body) -> Self {
-        Self { path, body, scroll: AbsoluteOffset::default() }
+        Self { path, body, scroll: AbsoluteOffset::default(), backup: None }
     }
 
     pub fn name(&self) -> String {

@@ -14,7 +14,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
-const WIDTH: f32 = 248.0;
+pub(super) const WIDTH: f32 = 248.0;
 const INDENT: f32 = 14.0;
 const ICON: f32 = 16.0;
 

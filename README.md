@@ -53,13 +53,17 @@ The install commands above don't trigger this warning.
 
 - File tree with one folder per line
 - Highlighting for ~200 languages, plus any `.sublime-syntax` file you add ([how](docs/LANGUAGES.md))
-- Line numbers, tabs, find and replace, undo and redo
+- Line numbers, tabs, undo and redo
+- Find and replace, with match case, whole word and regex
+- Find in files, skipping what `.gitignore` lists
 - Open a file by name, go to a line
+- Comment, move, duplicate and delete lines; brackets and quotes close themselves
 - Indentation that follows each file: tabs or spaces, and how many
 - Live Markdown preview
 - Dark and light themes, or your own in JSON ([how](docs/THEMES.md))
 - English and Portuguese
 - Safe saves: atomic writes, line endings kept, deleted files go to the trash
+- Reopens the files you left open, and brings back unsaved edits after a crash
 
 ## No network code
 
@@ -77,14 +81,21 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `Ctrl+G` | Go to line |
 | `Ctrl+F` / `F3` | Find / next match |
 | `Ctrl+H` | Replace |
+| `Ctrl+Shift+F` | Find in files |
+| `Ctrl+/` | Comment or uncomment lines |
+| `Alt+↑` / `Alt+↓` | Move lines |
+| `Shift+Alt+↑` / `Shift+Alt+↓` | Duplicate lines |
+| `Ctrl+Shift+K` | Delete lines |
+| `Ctrl+L` | Select line (again for the next) |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+Shift+V` | Markdown preview |
 | `Ctrl+B` | Toggle sidebar |
 | `Ctrl+N` / `Ctrl+Shift+N` | New file / folder |
 | `F2` / `Delete` | Rename / move to trash |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Bigger / smaller / reset font |
 | `Ctrl+,` | Settings |
 
-On a Mac, use `Cmd`. Replace is `Cmd+Alt+F`.
+On a Mac, use `Cmd` and `Option`. Replace is `Cmd+Alt+F`.
 
 ## Settings
 
@@ -100,7 +111,8 @@ On a Mac, use `Cmd`. Replace is `Cmd+Alt+F`.
   "ui_font_size": 13,
   "theme": "noite",
   "language": "auto",
-  "hidden": [".git", "node_modules", "target"]
+  "hidden": [".git", "node_modules", "target"],
+  "auto_close": true
 }
 ```
 
@@ -108,6 +120,7 @@ On a Mac, use `Cmd`. Replace is `Cmd+Alt+F`.
 and Fira Code, but any installed font works.
 `theme` is `noite`, `dia` or one of yours. `language` is `auto`, `en` or `pt-BR`.
 `hidden` lists names the file tree skips.
+`auto_close` types the closing bracket or quote for you.
 `tab_size` is the indent width for files with no indentation yet. Files that have
 some keep their own.
 

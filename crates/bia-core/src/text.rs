@@ -1,4 +1,4 @@
-//! Helpers over `\n`-separated text: byte offsets ↔ (line, column) and search.
+//! Helpers over `\n`-separated text: byte offsets ↔ (line, column).
 //!
 //! Columns are **byte** offsets inside the line, which is what the editor
 //! widget uses. Use [`char_column`] to show a human column number.
@@ -94,24 +94,6 @@ pub fn split_location(s: &str) -> (&str, Option<(usize, Option<usize>)>) {
     (rest, Some((last, None)))
 }
 
-/// Byte ranges of every case-insensitive (ASCII) match of `needle`.
-pub fn find_all(haystack: &str, needle: &str) -> Vec<std::ops::Range<usize>> {
-    if needle.is_empty() {
-        return Vec::new();
-    }
-    // ASCII lowercasing keeps byte lengths, so ranges stay valid.
-    let hay = haystack.to_ascii_lowercase();
-    let needle = needle.to_ascii_lowercase();
-    let mut out = Vec::new();
-    let mut from = 0;
-    while let Some(i) = hay[from..].find(&needle) {
-        let start = from + i;
-        out.push(start..start + needle.len());
-        from = start + needle.len();
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,12 +150,5 @@ mod tests {
         assert_eq!(split_location(":12"), ("", Some((12, None))));
         assert_eq!(split_location("C:\\x\\a.rs:3"), ("C:\\x\\a.rs", Some((3, None))));
         assert_eq!(split_location("a:+3"), ("a:+3", None));
-    }
-
-    #[test]
-    fn finds_case_insensitive() {
-        assert_eq!(find_all("Foo foo FOO", "foo"), vec![0..3, 4..7, 8..11]);
-        assert!(find_all("abc", "").is_empty());
-        assert_eq!(find_all("ação Ação", "ção"), vec![1..6, 8..13]);
     }
 }

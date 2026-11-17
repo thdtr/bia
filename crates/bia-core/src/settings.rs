@@ -33,6 +33,8 @@ pub struct Settings {
     pub language: String,
     /// Names hidden from the explorer. `*.ext` hides by extension.
     pub hidden: Vec<String>,
+    /// Typing `(`, `[`, `{` or a quote also types the closing half.
+    pub auto_close: bool,
 }
 
 impl Default for Settings {
@@ -49,6 +51,7 @@ impl Default for Settings {
             hidden: [".git", ".hg", ".svn", ".DS_Store", "Thumbs.db", "node_modules", "target"]
                 .map(String::from)
                 .to_vec(),
+            auto_close: true,
         }
     }
 }

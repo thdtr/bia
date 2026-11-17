@@ -145,37 +145,44 @@ fn compare(a: &Row, b: &Row) -> Ordering {
         .then_with(|| a.name.cmp(&b.name))
 }
 
-/// Every file under `root`, as paths relative to it with `/` separators,
-/// sorted. Skips `hidden` names and doesn't follow links to folders (they
-/// can loop). Stops after `limit` files; the flag says whether it did.
+/// Every file under `root` that git wouldn't ignore: `.gitignore`,
+/// `.ignore`, `.git/info/exclude` and the global excludes file all apply,
+/// and so do the `hidden` names. Dotfiles are listed (`.github`, `.env`).
+/// Links to folders aren't followed, since they can loop.
+pub fn walk_files(root: &Path, hidden: &[String]) -> impl Iterator<Item = PathBuf> {
+    let hidden = hidden.to_vec();
+    ignore::WalkBuilder::new(root)
+        .hidden(false)
+        // A `.gitignore` counts even outside a git repository, as it does
+        // in other editors.
+        .require_git(false)
+        .follow_links(false)
+        .filter_entry(move |e| {
+            e.depth() == 0 || !is_hidden(&e.file_name().to_string_lossy(), &hidden)
+        })
+        .build()
+        .flatten()
+        .filter(|e| match e.file_type() {
+            Some(t) if t.is_file() => true,
+            // A link to a file counts; a link to a folder doesn't.
+            Some(t) if t.is_symlink() => fs::metadata(e.path()).is_ok_and(|m| m.is_file()),
+            _ => false,
+        })
+        .map(ignore::DirEntry::into_path)
+}
+
+/// [`walk_files`] as paths relative to `root` with `/` separators, sorted.
+/// Stops after `limit` files; the flag says whether it did.
 pub fn list_files(root: &Path, hidden: &[String], limit: usize) -> (Vec<String>, bool) {
     let mut files = Vec::new();
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(dir) = pending.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if is_hidden(&name, hidden) {
-                continue;
-            }
-            let path = entry.path();
-            let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_dir() {
-                pending.push(path);
-                continue;
-            }
-            // A link to a file counts; a link to a folder is skipped.
-            if kind.is_symlink() && !fs::metadata(&path).is_ok_and(|m| m.is_file()) {
-                continue;
-            }
-            if files.len() == limit {
-                files.sort();
-                return (files, true);
-            }
-            if let Ok(relative) = path.strip_prefix(root) {
-                let parts: Vec<_> = relative.iter().map(|p| p.to_string_lossy()).collect();
-                files.push(parts.join("/"));
-            }
+    for path in walk_files(root, hidden) {
+        if files.len() == limit {
+            files.sort();
+            return (files, true);
+        }
+        if let Ok(relative) = path.strip_prefix(root) {
+            let parts: Vec<_> = relative.iter().map(|p| p.to_string_lossy()).collect();
+            files.push(parts.join("/"));
         }
     }
     files.sort();
@@ -269,6 +276,21 @@ mod tests {
         let (files, truncated) = list_files(&root, &hidden, 2);
         assert_eq!(files.len(), 2);
         assert!(truncated);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_follows_gitignore() {
+        let root = scratch("gitignore");
+        fs::create_dir_all(root.join("dist")).unwrap();
+        fs::create_dir_all(root.join(".github")).unwrap();
+        fs::write(root.join(".gitignore"), "dist/\n*.log\n").unwrap();
+        fs::write(root.join("dist/app.js"), "").unwrap();
+        fs::write(root.join("debug.log"), "").unwrap();
+        fs::write(root.join(".github/ci.yml"), "").unwrap();
+        fs::write(root.join("main.rs"), "").unwrap();
+        let (files, _) = list_files(&root, &[], 100);
+        assert_eq!(files, [".github/ci.yml", ".gitignore", "main.rs"]);
         let _ = fs::remove_dir_all(&root);
     }
 

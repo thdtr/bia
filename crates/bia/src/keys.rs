@@ -7,6 +7,8 @@
 //! | Ctrl+W                | Close tab                  |
 //! | Ctrl+Z / Ctrl+Shift+Z | Undo / redo (also Ctrl+Y)  |
 //! | Ctrl+F, F3, Shift+F3  | Find, next, previous       |
+//! | Ctrl+Shift+F          | Find in files              |
+//! | Ctrl+Shift+E          | Show the files             |
 //! | Ctrl+H                | Replace (macOS: Cmd+Alt+F) |
 //! | Ctrl+P                | Open file by name          |
 //! | Ctrl+G                | Go to line                 |
@@ -16,8 +18,19 @@
 //! | Ctrl+,                | Open settings.json         |
 //! | Ctrl+N / Ctrl+Shift+N | New file / new folder      |
 //! | F2 / Delete           | Rename / trash selection   |
+//! | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset   |
 //!
-//! On macOS, `Cmd` replaces `Ctrl`.
+//! In the editor:
+//!
+//! | Keys                  | Action                     |
+//! |-----------------------|----------------------------|
+//! | Ctrl+/                | Comment / uncomment lines  |
+//! | Alt+Up / Alt+Down     | Move lines                 |
+//! | Shift+Alt+Up / Down   | Duplicate lines            |
+//! | Ctrl+Shift+K          | Delete lines               |
+//! | Ctrl+L                | Select line (again: more)  |
+//!
+//! On macOS, `Cmd` replaces `Ctrl` and `Option` is `Alt`.
 
 use crate::app::Message;
 use iced::keyboard::key::{Named, Physical};
@@ -36,6 +49,8 @@ pub enum Shortcut {
     FindPrevious,
     Replace,
     QuickOpen,
+    FindInFiles,
+    Explorer,
     GoToLine,
     Preview,
     Sidebar,
@@ -46,6 +61,9 @@ pub enum Shortcut {
     NewFolder,
     Rename,
     Delete,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
     Escape,
     Confirm,
     /// Arrow keys nothing else used: they move through lists.
@@ -89,7 +107,9 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         // Cmd+H hides the app on macOS, so Replace is Cmd+Alt+F there.
         'f' if MAC && mods.alt() => Replace,
         'h' if !MAC => Replace,
+        'f' if shift => FindInFiles,
         'f' => Find,
+        'e' if shift => Explorer,
         'p' => QuickOpen,
         'g' => GoToLine,
         'v' if shift => Preview,
@@ -97,6 +117,9 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         ',' => Settings,
         'n' if shift => NewFolder,
         'n' => NewFile,
+        '=' | '+' => ZoomIn,
+        '-' => ZoomOut,
+        '0' => ZoomReset,
         _ => return None,
     })
 }
@@ -105,6 +128,38 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
 /// or `⌘S` on macOS.
 pub fn label(keys: &str) -> String {
     if cfg!(target_os = "macos") { keys.replace("Ctrl+", "⌘") } else { keys.to_owned() }
+}
+
+/// Commands on the text that only make sense while the editor has focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorCommand {
+    ToggleComment,
+    MoveLines { up: bool },
+    DuplicateLines { down: bool },
+    DeleteLines,
+    SelectLines,
+}
+
+fn editor_command(press: &KeyPress) -> Option<EditorCommand> {
+    use EditorCommand::*;
+    let mods = press.modifiers;
+    if let Key::Named(named @ (Named::ArrowUp | Named::ArrowDown)) = press.key {
+        if !mods.alt() || mods.command() {
+            return None;
+        }
+        let up = named == Named::ArrowUp;
+        return Some(if mods.shift() { DuplicateLines { down: !up } } else { MoveLines { up } });
+    }
+    if !mods.command() || mods.alt() {
+        return None;
+    }
+    Some(match press.key.to_latin(press.physical_key)?.to_ascii_lowercase() {
+        // Layouts that need Shift for `/` (German, for one) still get it.
+        '/' => ToggleComment,
+        'k' if mods.shift() => DeleteLines,
+        'l' if !mods.shift() => SelectLines,
+        _ => return None,
+    })
 }
 
 /// Key handling inside the editor. Clipboard and motion keys keep iced's
@@ -120,6 +175,9 @@ pub fn editor_binding(press: KeyPress) -> Option<Binding<Message>> {
     if let Key::Named(named @ (Named::PageUp | Named::PageDown)) = press.key {
         let down = named == Named::PageDown;
         return Some(Binding::Custom(Message::Page { down, select: mods.shift() }));
+    }
+    if let Some(command) = editor_command(&press) {
+        return Some(Binding::Custom(Message::Command(command)));
     }
     if let Key::Named(Named::Tab) = press.key {
         if mods.control() || mods.alt() || mods.logo() {
@@ -178,6 +236,17 @@ mod tests {
         // Typing letters without Ctrl is never a shortcut.
         assert_eq!(press("s", Code::KeyS, Modifiers::empty()), None);
         assert_eq!(press("S", Code::KeyS, Modifiers::SHIFT), None);
+    }
+
+    #[test]
+    fn zoom() {
+        assert_eq!(press("=", Code::Equal, Modifiers::COMMAND), Some(Shortcut::ZoomIn));
+        assert_eq!(
+            press("+", Code::Equal, Modifiers::COMMAND | Modifiers::SHIFT),
+            Some(Shortcut::ZoomIn)
+        );
+        assert_eq!(press("-", Code::Minus, Modifiers::COMMAND), Some(Shortcut::ZoomOut));
+        assert_eq!(press("0", Code::Digit0, Modifiers::COMMAND), Some(Shortcut::ZoomReset));
     }
 
     #[test]

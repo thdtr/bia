@@ -55,13 +55,17 @@ Com os comandos de instalação acima, esse aviso não aparece.
 
 - Árvore de arquivos com uma pasta por linha
 - Destaque de sintaxe para umas 200 linguagens, e outras com um arquivo `.sublime-syntax` ([veja como](docs/LANGUAGES.md))
-- Números de linha, abas, buscar e substituir, desfazer e refazer
+- Números de linha, abas, desfazer e refazer
+- Buscar e substituir, com maiúsculas, palavra inteira e regex
+- Busca em todos os arquivos, pulando o que está no `.gitignore`
 - Abrir arquivo pelo nome, ir para uma linha
+- Comentar, mover, duplicar e apagar linhas; parênteses e aspas fecham sozinhos
 - Indentação que segue cada arquivo: tabs ou espaços, e quantos
 - Prévia de Markdown ao vivo
 - Temas claro e escuro, ou o seu em JSON ([veja como](docs/THEMES.md))
 - Português e inglês
 - Salvamento seguro: gravação atômica, quebras de linha mantidas, arquivo apagado vai para a lixeira
+- Reabre os arquivos que estavam abertos e recupera o que não foi salvo depois de um travamento
 
 ## Sem código de rede
 
@@ -79,14 +83,21 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `Ctrl+G` | Ir para linha |
 | `Ctrl+F` / `F3` | Buscar / próximo resultado |
 | `Ctrl+H` | Substituir |
+| `Ctrl+Shift+F` | Buscar nos arquivos |
+| `Ctrl+/` | Comentar ou descomentar linhas |
+| `Alt+↑` / `Alt+↓` | Mover linhas |
+| `Shift+Alt+↑` / `Shift+Alt+↓` | Duplicar linhas |
+| `Ctrl+Shift+K` | Apagar linhas |
+| `Ctrl+L` | Selecionar linha (de novo para a próxima) |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Desfazer / refazer |
 | `Ctrl+Shift+V` | Prévia de Markdown |
 | `Ctrl+B` | Mostrar ou esconder a barra lateral |
 | `Ctrl+N` / `Ctrl+Shift+N` | Novo arquivo / nova pasta |
 | `F2` / `Delete` | Renomear / mandar para a lixeira |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Fonte maior / menor / original |
 | `Ctrl+,` | Configurações |
 
-No Mac, use `Cmd`. Substituir é `Cmd+Alt+F`.
+No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`.
 
 ## Configurações
 
@@ -102,13 +113,15 @@ No Mac, use `Cmd`. Substituir é `Cmd+Alt+F`.
   "ui_font_size": 13,
   "theme": "noite",
   "language": "auto",
-  "hidden": [".git", "node_modules", "target"]
+  "hidden": [".git", "node_modules", "target"],
+  "auto_close": true
 }
 ```
 
 `font_*` vale para o editor e `ui_font_*` para a interface. O BIA já vem com as
 fontes Fira Sans e Fira Code, mas aceita qualquer fonte instalada. `theme` pode ser
 `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou `pt-BR`. `hidden` lista os nomes que a árvore não mostra.
+`auto_close` fecha parênteses, colchetes, chaves e aspas por você.
 `tab_size` é a largura da indentação em arquivos que ainda não têm nenhuma. Os que já
 têm mantêm a deles.
 

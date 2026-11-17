@@ -1,8 +1,8 @@
 //! Tabs, the find bar, the editor and the Markdown preview.
 
 use super::layout::{EDITOR_PADDING, GUTTER_PADDING};
-use super::{hint, label, logo, style};
-use crate::app::{Bia, EDITOR_ID, EDITOR_SCROLL_ID, FIND_ID, Message, REPLACE_ID};
+use super::{hint, label, logo, option_toggle, style, tip};
+use crate::app::{Bia, EDITOR_ID, EDITOR_SCROLL_ID, FIND_ID, FindOption, Message, REPLACE_ID};
 use crate::buffer::Buffer;
 use crate::highlighter::Highlighter;
 use crate::keys;
@@ -11,7 +11,7 @@ use crate::ui::style::Colors;
 use iced::widget::text::{self, LineHeight, Span, Wrapping};
 use iced::widget::{
     Row, button, center, column, container, markdown, mouse_area, responsive, rich_text, row, rule,
-    scrollable, space, span, text_editor, text_input,
+    scrollable, space, span, text_editor, text_input, tooltip,
 };
 use iced::{Alignment, Background, Border, Element, Fill, FillPortion, Length, Padding, Pixels};
 
@@ -38,6 +38,7 @@ fn empty(app: &Bia) -> Element<'_, Message> {
         ("Ctrl+P", "welcome.open_file"),
         ("Ctrl+O", "welcome.open_folder"),
         ("Ctrl+N", "shelf.new_file"),
+        ("Ctrl+Shift+F", "search.title"),
         ("Ctrl+,", "welcome.settings"),
     ];
     let mut list = column![].spacing(8);
@@ -112,6 +113,7 @@ fn find_bar(app: &Bia) -> Element<'_, Message> {
     let t = &app.look.i18n;
     let Some(find) = &app.find else { return space().into() };
     let status = match (find.matches.len(), find.current) {
+        _ if find.error.is_some() => t.t("find.invalid").to_owned(),
         (0, _) if find.query.is_empty() => String::new(),
         (0, _) => t.t("find.none").to_owned(),
         (total, Some(i)) => t.f("find.count", &[("current", &(i + 1)), ("total", &total)]),
@@ -126,10 +128,43 @@ fn find_bar(app: &Bia) -> Element<'_, Message> {
             .width(Length::Fixed(260.0))
             .style(style::input(c))
     };
+    let status = hint(app, status);
+    let status = match &find.error {
+        Some(error) => {
+            tooltip(status.color(c.danger), tip(app, error.clone()), tooltip::Position::Bottom)
+                .into()
+        }
+        None => Element::from(status),
+    };
+    let o = find.options;
     let mut rows = column![
         row![
             space::horizontal(),
-            hint(app, status),
+            status,
+            row![
+                option_toggle(
+                    app,
+                    "Aa",
+                    "find.case",
+                    o.case_sensitive,
+                    Message::FindOption(FindOption::Case)
+                ),
+                option_toggle(
+                    app,
+                    "ab",
+                    "find.word",
+                    o.whole_word,
+                    Message::FindOption(FindOption::Word)
+                ),
+                option_toggle(
+                    app,
+                    ".*",
+                    "find.regex",
+                    o.regex,
+                    Message::FindOption(FindOption::Regex)
+                ),
+            ]
+            .spacing(2),
             field(t.t("find.placeholder"), &find.query, FIND_ID)
                 .on_input(Message::FindInput)
                 .on_submit(Message::FindSubmit),

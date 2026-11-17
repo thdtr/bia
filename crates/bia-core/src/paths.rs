@@ -3,7 +3,8 @@
 //! ```text
 //! <config>/bia/
 //! ├── settings.json
-//! ├── state.json   (written by BIA: the last folder opened)
+//! ├── state.json   (written by BIA: folders opened and their open files)
+//! ├── backups/     (written by BIA: unsaved edits, until saved or discarded)
 //! ├── themes/      *.json      (custom themes)
 //! └── languages/   *.sublime-syntax  (extra grammars)
 //! ```
@@ -29,6 +30,10 @@ pub fn settings_file() -> PathBuf {
 
 pub fn state_file() -> PathBuf {
     config_dir().join("state.json")
+}
+
+pub fn backups_dir() -> PathBuf {
+    config_dir().join("backups")
 }
 
 pub fn themes_dir() -> PathBuf {

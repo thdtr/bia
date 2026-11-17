@@ -6,7 +6,8 @@ BIA is two Rust crates, a folder of assets and two scripts that generate some of
 bia/
 ├── crates/
 │   ├── bia-core/        no GUI: settings, themes, i18n, tree, documents, history,
-│   │   │                languages, file operations (fs_ops), indentation, fuzzy match
+│   │   │                languages, file operations (fs_ops), indentation, fuzzy match,
+│   │   │                search, editing rules (comments, pairs), backups, state
 │   │   └── tests/sealed.rs   fails the build if network code appears
 │   └── bia/             the iced application
 │       ├── build.rs        embeds the icon in bia.exe (Windows only)
@@ -66,6 +67,8 @@ connects them to iced.
 | System language | sys-locale | macOS apps don't get `$LANG`, and Windows has no equivalent. |
 | Folder picker | rfd | Native dialogs. On Linux it talks to the XDG desktop portal instead of linking GTK, and runs `zenity` if there's no portal. |
 | Deleting files | trash | Files deleted from the tree go to the OS trash. |
+| Search | regex | Find, replace and find in files. Plain text goes through it too, escaped, for Unicode case folding. Its engine was already in the build through syntect. |
+| Walking a folder | ignore | From ripgrep. Applies `.gitignore`, `.ignore` and the global excludes for `Ctrl+P` and find in files. |
 
 Things we chose not to add: an async runtime (iced's thread pool is enough), a file
 watcher (BIA refreshes when the window gets focus back, so it uses no CPU while you're
@@ -123,6 +126,10 @@ few things an editor can't really do without:
 | `bia <path>` on the command line | That's how most developers open an editor. |
 | Reopen the last folder | Opened from the app menu, BIA would otherwise start empty every time. The folder is kept in `state.json`, next to `settings.json`, so BIA never rewrites the file you edit. |
 | A test for missing translations | A missing string fails CI instead of showing up as a key. |
+| Find options and find in files | Searching a project means case, whole words and regex, in every file. |
+| Comment, move, duplicate, delete lines; closing pairs | What hands expect in any code editor. Comment tokens are a table in `editing.rs`, since the built-in grammars don't carry them. |
+| Reopen the open files | `state.json` keeps each folder's tabs and cursors. |
+| Backups of unsaved edits | Written to `backups/` two seconds after the last edit, removed on save or discard. A crash loses at most those two seconds. |
 
 ## Known limitations
 
@@ -139,6 +146,10 @@ few things an editor can't really do without:
   break and BIA's copy of the text doesn't, so these files aren't opened.
 * **Tabs are drawn 8 columns wide.** iced doesn't let BIA change that. `tab_size` only
   sets what the Tab key inserts.
+* **Only the current find match is highlighted.** iced's editor can color text but
+  not draw behind it, so the others only show in the count.
+* **Find in files doesn't replace yet.** Results open the file with the match
+  selected, where `Ctrl+H` works.
 * **Each keystroke compares the whole text.** That's a byte comparison of at most
   16 MB, which you won't notice, and it keeps the undo code simple.
 
