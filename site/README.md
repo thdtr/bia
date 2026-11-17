@@ -18,6 +18,8 @@ netlify deploy --prod
   (`assets/themes/`).
 - `static/fonts/`: Fira Sans and Fira Code, subset from `assets/fonts/` with
   `pyftsubset` (fonttools).
+- `static/img/social-*.png`: the cards shown when a page is shared, one per language.
+  `python3 tools/make_social_preview.py` (from the repository root) regenerates them.
 - `static/img/bia-macos.webp` (2x) and `bia-macos-1x.webp`: the screenshot, BIA on a real macOS desktop. Run the
   Screenshot workflow (`.github/workflows/screenshot.yml`) from the Actions tab and
   convert the `screenshot` artifact to WebP.
