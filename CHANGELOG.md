@@ -6,24 +6,31 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-17
+
 ### Changed
 
 - The editor and the terminal keep only the text drawn in the last two frames. Scrolling
   through a long file used about 50 MB less, and a terminal with a lot of output about
   110 MB less.
+- Highlighting no longer parses everything below the line you edit again. Lines below
+  keep their colors unless the edit changes them, as opening a comment does. Typing in
+  the middle of the screen in a 200,000-line file went from 20 ms of work per key to 13.
 - Highlighting parses lines without their line break, which is 15–25% faster in some
   languages.
 - In files over 256 KB, find matches, the Markdown preview and the git marks catch up
   when you pause typing, and the git diff and the search run in the background. In a
   45,000-line file, being in a git repository added about 19 ms of work to every
   keystroke; now it adds about 2.
-- Highlighting no longer parses everything below the line you edit again. Lines below
-  keep their colors unless the edit changes them, as opening a comment does. Typing in
-  the middle of the screen in a 200,000-line file went from 20 ms of work per key to 13.
+- Backups are written in the background instead of while you type.
+- `Ctrl+P` lists the folder in the background and remembers the list, so it no longer
+  freezes the window in big folders. Ranking 50,000 paths takes 3 ms instead of 18.
+- Language servers get just the edited ranges when they support it (most do), instead
+  of the whole file after every pause, and messages to them are written on a thread of
+  their own, so a busy server can no longer freeze the window.
 - The file tree builds only the rows in sight. With 3,000 rows open, a keystroke went
   from 28 ms of work to 7, the same as with a small tree, and the window uses about
   25 MB less.
-- Backups are written in the background instead of while you type.
 - With `soft_wrap` on, measuring where lines wrap is 1.7 to 4 times faster, which shows
   when resizing the window over a long file.
 - The git branch and changed files come from one `git` call instead of three. Folders
@@ -32,11 +39,6 @@ Notable changes to BIA are listed here. The format is based on
   redrawn twice a second.
 - Undo keeps fewer steps when they hold more than 128 MB of text, so a few "replace
   all" in a big file can't take memory without limit.
-- Language servers get just the edited ranges when they support it (most do), instead
-  of the whole file after every pause, and messages to them are written on a thread of
-  their own, so a busy server can no longer freeze the window.
-- `Ctrl+P` lists the folder in the background and remembers the list, so it no longer
-  freezes the window in big folders. Ranking 50,000 paths takes 3 ms instead of 18.
 
 ### Fixed
 
@@ -161,7 +163,8 @@ First version.
 - No network code, checked in CI by `deny.toml` and `tests/sealed.rs`.
 - Installers for Linux, macOS and Windows.
 
-[Unreleased]: https://github.com/thdtr/bia/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/thdtr/bia/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/thdtr/bia/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thdtr/bia/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/thdtr/bia/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/thdtr/bia/releases/tag/v0.1.0

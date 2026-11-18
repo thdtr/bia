@@ -35,7 +35,7 @@ Se `~/.local/bin` não estiver no `PATH`, o script mostra a linha que deve ser a
 No Linux e no macOS, as opções vêm depois de `sh -s --`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/thdtr/bia/main/install.sh | sh -s -- --version v0.3.0
+curl -fsSL https://raw.githubusercontent.com/thdtr/bia/main/install.sh | sh -s -- --version v0.4.0
 ```
 
 | Opção | Efeito |

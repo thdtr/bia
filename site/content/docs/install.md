@@ -35,7 +35,7 @@ If `~/.local/bin` is not on your `PATH`, the script prints the line to add to yo
 On Linux and macOS, options are passed after `sh -s --`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/thdtr/bia/main/install.sh | sh -s -- --version v0.3.0
+curl -fsSL https://raw.githubusercontent.com/thdtr/bia/main/install.sh | sh -s -- --version v0.4.0
 ```
 
 | Option | Effect |
