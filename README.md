@@ -12,6 +12,9 @@
 BIA is a small code editor for Linux, macOS and Windows, written in Rust. File tree,
 syntax highlighting, Markdown preview, themes and one settings file. That's it.
 
+BIA is in beta. Your files are safe, but you may still find bugs, and shortcuts or
+settings may change before 1.0.
+
 ![BIA on macOS, with a Next.js project open](docs/screenshot.png)
 
 ## Install

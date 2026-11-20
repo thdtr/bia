@@ -52,7 +52,7 @@ fn main() -> iced::Result {
             }
             Some("-n" | "--new") => new = true,
             Some("-V" | "--version") => {
-                println!("bia {}", env!("CARGO_PKG_VERSION"));
+                println!("bia {} beta", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             _ => paths.push(PathBuf::from(arg)),

@@ -8,6 +8,9 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [0.5.0] - 2026-11-20
 
+The first beta. Your files are safe, but you may still find bugs, and shortcuts or
+settings may change before 1.0.
+
 ### Added
 
 - Several terminals, each in a tab at the top of the panel. `` Ctrl+Shift+` `` or the +

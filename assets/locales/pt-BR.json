@@ -158,7 +158,7 @@
   "palette.recent": "Abrir uma pasta recente",
   "palette.no_recent": "Nenhuma pasta recente ainda",
   "menu.button": "Menu",
-  "about.version": "Versão {version}",
+  "about.version": "Versão {version}, {stage}",
   "about.platform": "{os}, {arch}",
   "about.license": "Licença MIT. Fontes Fira sob a SIL Open Font License.",
   "about.copy": "Copiar detalhes",

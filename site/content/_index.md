@@ -6,6 +6,7 @@ template = "index.html"
 [extra]
 headline = "A happy minimalist editor."
 lede = "A small code editor for Linux, macOS and Windows, written in Rust."
+stage = "In beta. Your files are safe, but you may still find bugs, and shortcuts or settings may change before 1.0."
 tab_unix = "macOS and Linux"
 tab_windows = "Windows"
 install_note = "No admin rights needed. You can also [download a build](#download)."

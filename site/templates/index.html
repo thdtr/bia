@@ -8,7 +8,12 @@
   <div class="container">
     <h1 id="hero-title" class="hero__title">{{ x.headline }}</h1>
     <div class="hero__row">
-      <p class="hero__lede">{{ x.lede }}</p>
+      <div>
+        <p class="hero__lede">{{ x.lede }}</p>
+        {%- if x.stage %}
+        <p class="hero__stage">{{ x.stage }}</p>
+        {%- endif %}
+      </div>
       <div class="install" data-install>
         <div class="install__bar">
           <div class="install__tabs" role="tablist" aria-label="{{ x.tab_unix }} / {{ x.tab_windows }}" hidden>

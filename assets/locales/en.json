@@ -158,7 +158,7 @@
   "palette.recent": "Open a recent folder",
   "palette.no_recent": "No recent folders yet",
   "menu.button": "Menu",
-  "about.version": "Version {version}",
+  "about.version": "Version {version}, {stage}",
   "about.platform": "{os}, {arch}",
   "about.license": "MIT license. Fira fonts under the SIL Open Font License.",
   "about.copy": "Copy details",

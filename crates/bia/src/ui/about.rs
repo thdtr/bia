@@ -12,6 +12,9 @@ use iced::{Alignment, Element, Fill, Length};
 
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
+/// Where BIA is on the way to 1.0. Shown next to the version.
+pub const STAGE: &str = "beta";
+
 /// The system and processor this build is for, the way people write them.
 fn platform() -> (&'static str, &'static str) {
     let os = match std::env::consts::OS {
@@ -26,7 +29,7 @@ fn platform() -> (&'static str, &'static str) {
 /// One line that says which BIA this is, for a bug report.
 pub fn details() -> String {
     let (os, arch) = platform();
-    format!("BIA {} ({os}, {arch})", env!("CARGO_PKG_VERSION"))
+    format!("BIA {} {STAGE} ({os}, {arch})", env!("CARGO_PKG_VERSION"))
 }
 
 pub fn about(app: &Bia) -> Element<'_, Message> {
@@ -44,7 +47,10 @@ pub fn about(app: &Bia) -> Element<'_, Message> {
         space().height(4),
         hint(app, t.t("app.tagline")),
         space().height(12),
-        label(app, t.f("about.version", &[("version", &env!("CARGO_PKG_VERSION"))])),
+        label(
+            app,
+            t.f("about.version", &[("version", &env!("CARGO_PKG_VERSION")), ("stage", &STAGE)])
+        ),
         hint(app, t.f("about.platform", &[("os", &os), ("arch", &arch)])),
         space().height(12),
         hint(app, t.t("app.sealed")).align_x(Alignment::Center),

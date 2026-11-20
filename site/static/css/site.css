@@ -59,6 +59,7 @@ pre code { padding: 0; background: none; font-size: var(--text-code); }
 .hero__title { font-size: var(--text-display); font-weight: 300; line-height: 1.02; letter-spacing: var(--tracking-display); max-width: none; }
 .hero__row { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: var(--gap-columns); align-items: start; margin-top: var(--space-xl); }
 .hero__lede { padding-top: calc(44px + var(--space-sm)); font-size: var(--text-lead); color: var(--color-ink-2); max-width: 30ch; }
+.hero__stage { margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--color-muted); max-width: 34ch; }
 
 .install { display: grid; gap: var(--space-sm); min-width: 0; }
 .install__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); }
