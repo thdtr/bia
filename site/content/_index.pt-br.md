@@ -18,12 +18,18 @@ features = [
   { name = "Busca nos arquivos", text = "Maiúsculas, palavra inteira e regex. Pula o que está no `.gitignore`." },
   { name = "Servidores de linguagem", text = "Erros enquanto digita, completar, definição, renomear. Você escolhe o servidor." },
   { name = "Git", text = "Linhas alteradas ao lado dos números, arquivos alterados na árvore, a branch." },
-  { name = "Terminal", text = "O seu shell num painel, com <kbd data-mod>Ctrl+`</kbd>." },
+  { name = "Terminal", text = "Os seus shells em abas, abaixo do editor. <kbd data-mod>Ctrl</kbd>+clique num `arquivo:42` abre o arquivo." },
+  { name = "Uma árvore que trabalha", text = "Crie, renomeie, mova e copie ali mesmo, com o botão direito ou arrastando." },
+  { name = "Todos os comandos pelo nome", text = "<kbd data-mod>Ctrl+Shift+P</kbd> acha qualquer um, e todo atalho pode ser trocado." },
+  { name = "Arquivos novos guardados", text = "<kbd data-mod>Ctrl+N</kbd> abre uma aba que guarda o que você digita até salvar, mesmo se você sair." },
+  { name = "Histórico local", text = "As últimas 30 versões salvas de cada arquivo, para trazer uma de volta." },
+  { name = "Dois arquivos lado a lado", text = "<kbd data-mod>Ctrl+\\</kbd> leva a aba para o outro lado." },
+  { name = "Réguas e guias", text = "Réguas, guias de indentação, espaços visíveis e o `.editorconfig` do projeto." },
   { name = "Comandos de linha", text = "Comentar, mover, duplicar e apagar linhas. Parênteses fecham sozinhos." },
   { name = "Destaque de sintaxe", text = "Cerca de 200 linguagens, mais os seus `.sublime-syntax`." },
   { name = "Arquivos de qualquer tamanho", text = "300 mil linhas abrem na hora, com número de linha." },
   { name = "Abrir pelo nome", text = "<kbd data-mod>Ctrl+P</kbd> e parte do nome. Com `:42`, vai para a linha 42." },
-  { name = "Prévia de Markdown", text = "Ao vivo, ao lado do texto." },
+  { name = "Prévia de Markdown", text = "Ao vivo, numa aba própria." },
   { name = "Temas", text = "Noite e Dia, ou o seu em JSON." },
   { name = "Português e inglês", text = "Segue o sistema, ou o que você configurar." },
 ]
@@ -37,6 +43,7 @@ saves_lede = "O BIA grava uma cópia antes e só faz a troca quando ela já est�
 saves_steps = ["Grava uma cópia oculta", "Garante que ela foi para o disco", "Renomeia por cima do original"]
 saves_notes = [
   "O que não foi salvo volta depois de um travamento.",
+  "Cada salvamento fica guardado no histórico local.",
   "Quebras de linha e BOM ficam como estavam.",
   "Se o arquivo mudou no disco, o BIA pergunta antes.",
   "Arquivos apagados vão para a lixeira.",

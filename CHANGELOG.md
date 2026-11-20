@@ -6,6 +6,8 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-20
+
 ### Added
 
 - Several terminals, each in a tab at the top of the panel. `` Ctrl+Shift+` `` or the +
@@ -238,7 +240,8 @@ First version.
 - No network code, checked in CI by `deny.toml` and `tests/sealed.rs`.
 - Installers for Linux, macOS and Windows.
 
-[Unreleased]: https://github.com/thdtr/bia/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/thdtr/bia/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/thdtr/bia/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thdtr/bia/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thdtr/bia/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/thdtr/bia/compare/v0.1.0...v0.2.0
