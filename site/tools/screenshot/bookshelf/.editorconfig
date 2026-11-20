@@ -1,0 +1,9 @@
+# The sample project's own settings, as a real Next.js project would have.
+# Without this file, BIA would follow the .editorconfig of the BIA repository
+# around it, which asks for four spaces.
+root = true
+
+[*]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
