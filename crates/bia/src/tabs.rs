@@ -171,25 +171,6 @@ impl Tabs {
         self.list.iter().position(|t| t.path == path && t.is_preview())
     }
 
-    /// Opens `tab` as the active tab of the side that isn't focused, and
-    /// leaves the focus where it is.
-    pub fn insert_beside(&mut self, mut tab: Tab) {
-        let pane = self.focused.other();
-        tab.pane = pane;
-        let at = match self.active_in(pane) {
-            Some((i, _)) => i + 1,
-            None => self.list.len(),
-        };
-        self.list.insert(at, tab);
-        for slot in &mut self.active {
-            if *slot >= at {
-                *slot += 1;
-            }
-        }
-        self.active[pane.slot()] = at;
-        self.settle();
-    }
-
     /// Moves the focus to `pane`, if it has tabs.
     pub fn focus(&mut self, pane: Pane) {
         if self.has(pane) {
@@ -399,13 +380,13 @@ mod tests {
     }
 
     #[test]
-    fn previews_open_beside_their_file() {
-        let mut t = tabs(&["/a.md", "/b.md"]);
-        t.insert_beside(Tab::new("/b.md".into(), Body::Preview));
-        assert_eq!(side(&t, Pane::Right), ["b.md"]);
-        assert_eq!(t.focused(), Pane::Left);
-        assert_eq!(t.active().unwrap().name(), "b.md");
-        assert!(!t.active().unwrap().is_preview());
+    fn previews_open_after_their_file() {
+        let mut t = tabs(&["/a.md", "/b.md", "/c.md"]);
+        t.select(1);
+        t.insert(Tab::new("/b.md".into(), Body::Preview));
+        assert_eq!(names(&t), ["a.md", "b.md", "b.md", "c.md"]);
+        assert!(!t.is_split());
+        assert!(t.active().unwrap().is_preview());
         // The file and its preview are told apart.
         assert_eq!(t.position(Path::new("/b.md")), Some(1));
         assert_eq!(t.preview_of(Path::new("/b.md")), Some(2));

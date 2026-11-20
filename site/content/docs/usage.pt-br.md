@@ -164,7 +164,7 @@ Arquivos que ainda não têm indentação usam o `tab_size` das configurações.
 
 ## Prévia de Markdown
 
-<kbd>Ctrl+Shift+V</kbd> abre a prévia do arquivo Markdown atual numa aba ao lado, e a prévia acompanha o que você digita. Apertar de novo, ou fechar a aba, fecha a prévia. A prévia segue o CommonMark, com as tabelas, listas de tarefas e o tachado do GitHub. Ela não carrega imagens. Links para outros arquivos abrem no BIA, e links da web são copiados para a área de transferência em vez de abertos.
+<kbd>Ctrl+Shift+V</kbd> abre a prévia do arquivo Markdown atual numa aba própria, logo depois da aba do arquivo, e a prévia acompanha o que você digita. Na prévia, <kbd>Ctrl+Shift+V</kbd> volta para o arquivo, então o mesmo atalho vai e volta. A prévia fecha como qualquer outra aba. Para ver o texto e a prévia lado a lado, leve um dos dois para o outro lado com <kbd>Ctrl+\</kbd>. A prévia segue o CommonMark, com as tabelas, listas de tarefas e o tachado do GitHub. Ela não carrega imagens. Links para outros arquivos abrem no BIA, e links da web são copiados para a área de transferência em vez de abertos.
 
 ## Salvando
 

@@ -164,7 +164,7 @@ Files with no indentation yet use `tab_size` from the settings. Go files and Mak
 
 ## Markdown preview
 
-<kbd>Ctrl+Shift+V</kbd> opens a preview of the current Markdown file in a tab beside it, and the preview follows what you type. Pressing it again, or closing the tab, closes the preview. The preview follows CommonMark, with GitHub tables, task lists and strikethrough. It does not load images. Links to other files open them in BIA, and web links are copied to the clipboard instead of being opened.
+<kbd>Ctrl+Shift+V</kbd> opens a preview of the current Markdown file in a tab of its own, right after the file's, and the preview follows what you type. On the preview, <kbd>Ctrl+Shift+V</kbd> goes back to the file, so the same keys go back and forth. Close the preview like any other tab. To see the text and the preview side by side, move one of them to the other side with <kbd>Ctrl+\</kbd>. The preview follows CommonMark, with GitHub tables, task lists and strikethrough. It does not load images. Links to other files open them in BIA, and web links are copied to the clipboard instead of being opened.
 
 ## Saving
 

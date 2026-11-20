@@ -2657,24 +2657,30 @@ impl Bia {
         Task::batch([reveal, self.focus_editor()].into_iter().chain(base))
     }
 
-    /// Ctrl+Shift+V on a Markdown file opens its preview on the other side
-    /// of the split, or closes it. On a preview tab, closes it.
+    /// Ctrl+Shift+V on a Markdown file opens its preview in the next tab, or
+    /// goes to it if it's open. On a preview, it goes back to the file.
     fn toggle_preview(&mut self) -> Task<Message> {
         let Some(tab) = self.tabs.active() else { return Task::none() };
+        let path = tab.path.clone();
+        // From the preview, back to the file, so the same keys go both ways.
         if tab.is_preview() {
-            return self.remove_tab(self.tabs.active_index());
+            return match self.tabs.position(&path) {
+                Some(i) => self.update(Message::SelectTab(i)),
+                None => Task::none(),
+            };
         }
         if !self.is_markdown(tab) {
             return Task::none();
         }
-        let path = tab.path.clone();
         if let Some(preview) = self.tabs.preview_of(&path) {
-            return self.remove_tab(preview);
+            return self.update(Message::SelectTab(preview));
         }
         if let Some(buffer) = self.active_buffer_mut() {
             buffer.set_preview(true);
         }
-        self.tabs.insert_beside(Tab::new(path, Body::Preview));
+        // A tab of its own, right after the file's: the preview is for
+        // reading, so it takes the whole side instead of sharing it.
+        self.tabs.insert(Tab::new(path, Body::Preview));
         Task::none()
     }
 
@@ -3442,6 +3448,15 @@ impl Bia {
     /// wait for typing to pause, and the diff and the search run in the
     /// background.
     fn follow_edits(&mut self) -> Task<Message> {
+        // A preview in front shows its file's text as it is now, edits made
+        // just before switching included.
+        if let Some(path) = self.tabs.active().filter(|t| t.is_preview()).map(|t| t.path.clone())
+            && let Some(buffer) =
+                self.tabs.position(&path).and_then(|i| self.tabs.get_mut(i)?.buffer_mut())
+        {
+            buffer.refresh_markdown();
+            return Task::none();
+        }
         let Some(buffer) = self.tabs.active_mut().and_then(Tab::buffer_mut) else {
             return Task::none();
         };

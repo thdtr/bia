@@ -68,7 +68,7 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Comentar, mover, duplicar e apagar linhas; parênteses e aspas fecham sozinhos
 - Arquivos de qualquer tamanho abrem na hora, com número de linha
 - Indentação que segue cada arquivo: tabs ou espaços, e quantos
-- Prévia de Markdown ao vivo, numa aba ao lado do arquivo
+- Prévia de Markdown ao vivo, numa aba própria
 - Dois arquivos lado a lado
 - Temas claro e escuro, ou o seu em JSON ([veja como](docs/THEMES.md))
 - Português e inglês

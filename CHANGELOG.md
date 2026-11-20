@@ -72,8 +72,9 @@ Notable changes to BIA are listed here. The format is based on
 - Names are typed in the tree itself, instead of a strip at the bottom of the sidebar.
   When renaming, the name comes selected without its extension. Moving to the trash
   asks in a dialog.
-- The Markdown preview opens in a tab beside the file, which you can close like any
-  other tab.
+- The Markdown preview opens in a tab of its own, right after the file's, instead of
+  sharing the editor's space. `Ctrl+Shift+V` goes from the file to its preview and
+  back, and the preview closes like any other tab.
 - Wide tables in the Markdown preview scroll sideways instead of being cut off.
 
 ## [0.4.0] - 2026-11-17

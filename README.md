@@ -66,7 +66,7 @@ The install commands above don't trigger this warning.
 - Comment, move, duplicate and delete lines; brackets and quotes close themselves
 - Files of any length open at once, line numbers included
 - Indentation that follows each file: tabs or spaces, and how many
-- Live Markdown preview, in a tab beside the file
+- Live Markdown preview, in a tab of its own
 - Two files side by side
 - Dark and light themes, or your own in JSON ([how](docs/THEMES.md))
 - English and Portuguese
