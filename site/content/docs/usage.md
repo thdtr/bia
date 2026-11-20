@@ -28,8 +28,23 @@ bia [PATH]...
 | `bia main.rs lib.rs` | Opens the files in tabs. The folder of the first file becomes the workspace. |
 | `bia src/main.rs:42` | Opens the file at line 42. |
 | `bia src/main.rs:42:7` | Opens the file at line 42, column 7. |
+| `bia --new` | Opens a new window with nothing in it. |
 | `bia --version` | Prints the version. |
 | `bia --help` | Prints a summary of the usage. |
+
+## Menu and commands
+
+The ☰ button at the left of the status bar opens a menu with the usual commands, such as new file, new window, open, save and close, along with the settings, the keyboard shortcuts and About BIA. <kbd>Ctrl+Shift+P</kbd> lists every command. Type part of a name to find it, and <kbd>Enter</kbd> runs it.
+
+"Open recent…" lists the folders you opened before. <kbd>Ctrl+Shift+N</kbd> opens another BIA window with nothing in it, and so does `bia --new`. On Linux, a right click on BIA's icon in the app menu or the dock offers a new window too. "Close folder" goes back to the welcome screen. A right click on a tab offers ways to close tabs, and to copy the file's path.
+
+<kbd>Ctrl+Shift+T</kbd> reopens the last tab you closed, at the line it was on. Dropping a file or folder on the window opens it. BIA remembers the window's size and place, and whether it was maximized.
+
+## New files
+
+<kbd>Ctrl+N</kbd> opens an empty tab called "Untitled 1". Saving it asks where to put it. Until then, what you type is kept in a backup like any unsaved change, so it comes back when you open BIA again, even after quitting. <kbd>Ctrl+Shift+S</kbd> saves any file under a new name, and "Save all" in the menu saves every file with changes.
+
+To create a file in a folder, use the button at the top of the sidebar, or a right click in the tree.
 
 ## File tree
 
@@ -43,8 +58,6 @@ Drag a file or folder onto another folder to move it there, or hold Alt to copy 
 
 | Action | Keys |
 |---|---|
-| New file in the selected folder | <kbd>Ctrl+N</kbd> |
-| New folder | <kbd>Ctrl+Shift+N</kbd> |
 | Rename | <kbd>F2</kbd> |
 | Move to the trash | <kbd>Delete</kbd> |
 | Cut, copy, paste | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> |

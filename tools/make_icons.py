@@ -114,6 +114,7 @@ SYMBOLS = {
         "M3.9 3h8.2a.9.9 0 0 1 .9.9v8.2a.9.9 0 0 1-.9.9H3.9a.9.9 0 0 1-.9-.9V3.9a.9.9 0 0 1 .9-.9Z",
         "M5.5 8h5",
     ),
+    "menu": stroked("M3.5 4.5h9", "M3.5 8h9", "M3.5 11.5h9"),
 }
 
 # Two letters per language. That is all that fits at 16 px.

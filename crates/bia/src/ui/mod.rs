@@ -13,6 +13,7 @@
 //! └──────────────────────────────────────────────────────┘
 //! ```
 
+mod about;
 mod explorer;
 pub(crate) use explorer::row_height;
 pub mod menu;
@@ -22,7 +23,7 @@ mod search;
 pub mod style;
 mod workspace;
 
-use crate::app::{Bia, Choice, Closing, Dialog, Message, Panel};
+use crate::app::{After, Bia, Choice, Closing, Dialog, Message, Overlay, Panel};
 use iced::widget::{
     Text, button, center, column, container, opaque, row, rule, space, stack, text, tooltip,
 };
@@ -57,6 +58,12 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     let mut layers = stack![base];
     if let Some(p) = &app.palette {
         layers = layers.push(palette::view(app, p));
+    }
+    if let Some(overlay) = app.overlay {
+        layers = layers.push(match overlay {
+            Overlay::About => about::about(app),
+            Overlay::Shortcuts => about::shortcuts(app),
+        });
     }
     if let Some(menu) = &app.menu {
         layers = layers.push(menu::view(app, menu));
@@ -196,6 +203,9 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
             let first = message.lines().next().unwrap_or_default().to_owned();
             hint(app, first).color(color).wrapping(text::Wrapping::None).into()
         }
+        (None, Some(tab), None) if crate::app::is_untitled(tab) => {
+            hint(app, app.tab_name(tab)).into()
+        }
         (None, Some(tab), None) => {
             let shown = app
                 .tree
@@ -274,6 +284,12 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
     }
 
     let mut start = row![].spacing(10).align_y(Alignment::Center);
+    let menu = button(explorer::icon(crate::icons::get("menu"), c.muted))
+        .padding(2)
+        .style(style::quiet(c))
+        .on_press(Message::MainMenu);
+    start =
+        start.push(tooltip(menu, tip(app, t.t("menu.button").to_owned()), tooltip::Position::Top));
     if app.tree.is_some() {
         let color = if app.sidebar { c.accent } else { c.muted };
         let toggle = button(explorer::icon(crate::icons::get("sidebar"), color))
@@ -298,6 +314,10 @@ fn dialog_view<'a>(app: &'a Bia, dialog: &Dialog) -> Element<'a, Message> {
     let c = app.look.colors;
     let t = &app.look.i18n;
     let name = |path: &std::path::Path| bia_core::tree::display_name(path);
+    let tab_name = |path: &std::path::Path| match app.tabs.position(path) {
+        Some(i) => app.tabs.iter().nth(i).map(|t| app.tab_name(t)).unwrap_or_default(),
+        None => name(path),
+    };
     // (message, labels for Save / Discard, which choice is the safe default).
     // Without a Save label, there are only two buttons.
     let (message, save, discard, safe) = match dialog {
@@ -313,8 +333,8 @@ fn dialog_view<'a>(app: &'a Bia, dialog: &Dialog) -> Element<'a, Message> {
             "tree.trash",
             Choice::Discard,
         ),
-        Dialog::Quit => {
-            let dirty = app.tabs.dirty_indices().len();
+        Dialog::Unsaved(After::Quit) => {
+            let dirty = app.dirty_files().len();
             (
                 t.f("quit.message", &[("count", &dirty)]),
                 "quit.save_all",
@@ -322,8 +342,17 @@ fn dialog_view<'a>(app: &'a Bia, dialog: &Dialog) -> Element<'a, Message> {
                 Choice::Save,
             )
         }
+        Dialog::Unsaved(After::CloseFolder) => {
+            let dirty = app.dirty_files().len();
+            (
+                t.f("close.folder_message", &[("count", &dirty)]),
+                "close.folder_save",
+                "close.folder_discard",
+                Choice::Save,
+            )
+        }
         Dialog::Close(path) => (
-            t.f("close.message", &[("name", &name(path))]),
+            t.f("close.message", &[("name", &tab_name(path))]),
             "close.save",
             "close.discard",
             Choice::Save,

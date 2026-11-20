@@ -54,6 +54,8 @@ The install commands above don't trigger this warning.
 - File tree with one folder per line. Create, rename, move, copy and trash right there, with a right click or by dragging
 - Highlighting for ~200 languages, plus any `.sublime-syntax` file you add ([how](docs/LANGUAGES.md))
 - Line numbers, tabs, undo and redo
+- A menu, every command by name (`Ctrl+Shift+P`), and an About window
+- New files kept until you save them, even if you quit
 - Find and replace, with match case, whole word and regex
 - Find in files, skipping what `.gitignore` lists
 - Open a file by name, go to a line
@@ -106,7 +108,11 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+Shift+V` | Markdown preview |
 | `Ctrl+B` | Toggle sidebar |
-| `Ctrl+N` / `Ctrl+Shift+N` | New file / folder |
+| `Ctrl+N` / `Ctrl+Shift+N` | New file / new window |
+| `Ctrl+Shift+S` | Save as |
+| `Ctrl+Shift+T` | Reopen the closed tab |
+| `Ctrl+Shift+P` | All commands |
+| `Ctrl+Q` | Quit |
 | `F2` / `Delete` | Rename / move to trash |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Bigger / smaller / reset font |
 | `` Ctrl+` `` | Show / hide the terminal |

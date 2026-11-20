@@ -45,6 +45,7 @@ static ICONS: LazyLock<HashMap<&'static str, Handle>> = LazyLock::new(|| {
         "new-file",
         "new-folder",
         "collapse",
+        "menu",
         "lang/rs",
         "lang/py",
         "lang/js",

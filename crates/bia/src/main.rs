@@ -10,6 +10,7 @@
 mod app;
 mod buffer;
 mod code_view;
+mod commands;
 mod fonts;
 mod frame_cache;
 mod icons;
@@ -33,6 +34,7 @@ Usage: bia [PATH]...
                   (without a folder, the first file's folder is the workspace)
 
 Options:
+  -n, --new       open a new window with nothing in it
   -h, --help      print this help
   -V, --version   print the version
 
@@ -41,12 +43,14 @@ BIA has no network code, so it never connects to anything.";
 
 fn main() -> iced::Result {
     let mut paths = Vec::new();
+    let mut new = false;
     for arg in std::env::args_os().skip(1) {
         match arg.to_str() {
             Some("-h" | "--help") => {
                 println!("{HELP}");
                 return Ok(());
             }
+            Some("-n" | "--new") => new = true,
             Some("-V" | "--version") => {
                 println!("bia {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
@@ -55,5 +59,5 @@ fn main() -> iced::Result {
         }
     }
     fonts::register_bundled();
-    app::run(paths)
+    app::run(paths, new)
 }

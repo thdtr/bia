@@ -32,6 +32,11 @@ pub struct Layout {
     pub sidebar_width: Option<f32>,
     pub sidebar_hidden: bool,
     pub terminal_height: Option<f32>,
+    /// The window's size when it isn't maximized, in logical pixels.
+    pub window_size: Option<(f32, f32)>,
+    /// Where the window was, where the system says (not on Wayland).
+    pub window_position: Option<(f32, f32)>,
+    pub maximized: bool,
 }
 
 /// The open files of one folder.

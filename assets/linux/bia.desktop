@@ -12,3 +12,9 @@ Keywords=editor;code;text;rust;
 MimeType=text/plain;inode/directory;
 Icon=bia
 StartupWMClass=bia
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Name[pt_BR]=Nova janela
+Exec=bia --new

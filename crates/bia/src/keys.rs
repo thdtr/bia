@@ -16,7 +16,11 @@
 //! | Ctrl+B                | Toggle sidebar             |
 //! | Ctrl+Tab              | Next tab (Shift: previous) |
 //! | Ctrl+,                | Open settings.json         |
-//! | Ctrl+N / Ctrl+Shift+N | New file / new folder      |
+//! | Ctrl+N / Ctrl+Shift+N | New file / new window      |
+//! | Ctrl+Shift+S          | Save as                    |
+//! | Ctrl+Shift+T          | Reopen the closed tab      |
+//! | Ctrl+Shift+P          | All commands               |
+//! | Ctrl+Q                | Quit                       |
 //! | F2 / Delete           | Rename / trash selection   |
 //! | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset   |
 //! | Ctrl+`                | Show / hide the terminal   |
@@ -70,7 +74,11 @@ pub enum Shortcut {
     PreviousTab,
     Settings,
     NewFile,
-    NewFolder,
+    NewWindow,
+    SaveAs,
+    ReopenTab,
+    Commands,
+    Quit,
     Rename,
     Delete,
     ZoomIn,
@@ -130,6 +138,9 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
     }
     // With Shift held, some platforms report `V` rather than `v`.
     Some(match key.to_latin(physical)?.to_ascii_lowercase() {
+        's' if shift => SaveAs,
+        't' if shift => ReopenTab,
+        'p' if shift => Commands,
         'o' => OpenFolder,
         's' => Save,
         'w' => CloseTab,
@@ -151,8 +162,9 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         'b' => Sidebar,
         '\\' => Split,
         ',' => Settings,
-        'n' if shift => NewFolder,
+        'n' if shift => NewWindow,
         'n' => NewFile,
+        'q' => Quit,
         '=' | '+' => ZoomIn,
         '-' => ZoomOut,
         '0' => ZoomReset,
@@ -329,7 +341,10 @@ mod tests {
         for c in ["z", "Z"] {
             assert_eq!(press(c, Code::KeyZ, cmd_shift), Some(Shortcut::Redo));
         }
-        assert_eq!(press("N", Code::KeyN, cmd_shift), Some(Shortcut::NewFolder));
+        assert_eq!(press("N", Code::KeyN, cmd_shift), Some(Shortcut::NewWindow));
+        assert_eq!(press("P", Code::KeyP, cmd_shift), Some(Shortcut::Commands));
+        assert_eq!(press("S", Code::KeyS, cmd_shift), Some(Shortcut::SaveAs));
+        assert_eq!(press("T", Code::KeyT, cmd_shift), Some(Shortcut::ReopenTab));
     }
 
     #[test]

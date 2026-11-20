@@ -10,13 +10,19 @@ No macOS, a maioria dos atalhos usa <kbd>⌘</kbd> no lugar de <kbd>Ctrl</kbd>. 
 
 | Ação | Linux e Windows | macOS |
 |---|---|---|
+| Novo arquivo | <kbd>Ctrl+N</kbd> | <kbd>⌘N</kbd> |
+| Nova janela | <kbd>Ctrl+Shift+N</kbd> | <kbd>⌘⇧N</kbd> |
 | Abrir pasta | <kbd>Ctrl+O</kbd> | <kbd>⌘O</kbd> |
 | Abrir arquivo pelo nome | <kbd>Ctrl+P</kbd> | <kbd>⌘P</kbd> |
 | Salvar | <kbd>Ctrl+S</kbd> | <kbd>⌘S</kbd> |
+| Salvar como | <kbd>Ctrl+Shift+S</kbd> | <kbd>⌘⇧S</kbd> |
 | Fechar aba | <kbd>Ctrl+W</kbd> | <kbd>⌘W</kbd> |
+| Reabrir a aba fechada | <kbd>Ctrl+Shift+T</kbd> | <kbd>⌘⇧T</kbd> |
 | Próxima aba | <kbd>Ctrl+Tab</kbd> | <kbd>⌃Tab</kbd> |
 | Aba anterior | <kbd>Ctrl+Shift+Tab</kbd> | <kbd>⌃⇧Tab</kbd> |
 | Abrir o `settings.json` | <kbd>Ctrl+,</kbd> | <kbd>⌘,</kbd> |
+| Todos os comandos | <kbd>Ctrl+Shift+P</kbd> | <kbd>⌘⇧P</kbd> |
+| Sair | <kbd>Ctrl+Q</kbd> | <kbd>⌘Q</kbd> |
 
 ## Edição
 
@@ -71,8 +77,6 @@ Desfazer e refazer agrupam as alterações por palavra.
 
 | Ação | Linux e Windows | macOS |
 |---|---|---|
-| Novo arquivo | <kbd>Ctrl+N</kbd> | <kbd>⌘N</kbd> |
-| Nova pasta | <kbd>Ctrl+Shift+N</kbd> | <kbd>⌘⇧N</kbd> |
 | Renomear | <kbd>F2</kbd> | <kbd>F2</kbd> |
 | Mover para a lixeira | <kbd>Delete</kbd> | <kbd>⌦</kbd> |
 | Recortar, copiar, colar na árvore | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> | <kbd>⌘X</kbd>, <kbd>⌘C</kbd>, <kbd>⌘V</kbd> |

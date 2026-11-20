@@ -28,8 +28,23 @@ bia [CAMINHO]...
 | `bia main.rs lib.rs` | Abre os arquivos em abas. A pasta do primeiro arquivo passa a ser o espaço de trabalho. |
 | `bia src/main.rs:42` | Abre o arquivo na linha 42. |
 | `bia src/main.rs:42:7` | Abre o arquivo na linha 42, coluna 7. |
+| `bia --new` | Abre uma janela nova, vazia. |
 | `bia --version` | Mostra a versão. |
 | `bia --help` | Mostra um resumo de uso. |
+
+## Menu e comandos
+
+O botão ☰ à esquerda da barra de status abre um menu com os comandos de sempre, como novo arquivo, nova janela, abrir, salvar e fechar, além das configurações, dos atalhos de teclado e do Sobre o BIA. <kbd>Ctrl+Shift+P</kbd> lista todos os comandos. Digite parte do nome para achar, e <kbd>Enter</kbd> executa.
+
+"Abrir recente…" lista as pastas que você já abriu. <kbd>Ctrl+Shift+N</kbd> abre outra janela do BIA, vazia, e `bia --new` também. No Linux, clicar com o botão direito no ícone do BIA no menu de aplicativos ou na dock também oferece uma nova janela. "Fechar pasta" volta para a tela inicial. Clicar com o botão direito numa aba mostra formas de fechar abas e de copiar o caminho do arquivo.
+
+<kbd>Ctrl+Shift+T</kbd> reabre a última aba fechada, na linha em que ela estava. Soltar um arquivo ou uma pasta na janela abre o que foi solto. O BIA lembra o tamanho e o lugar da janela, e se ela estava maximizada.
+
+## Arquivos novos
+
+<kbd>Ctrl+N</kbd> abre uma aba vazia chamada "Sem título 1". Ao salvar, o BIA pergunta onde guardar. Até lá, o que você digita fica num backup, como qualquer alteração não salva, e volta quando você abre o BIA de novo, mesmo depois de sair. <kbd>Ctrl+Shift+S</kbd> salva qualquer arquivo com outro nome, e "Salvar tudo", no menu, salva todos os arquivos com alterações.
+
+Para criar um arquivo numa pasta, use o botão no alto da barra lateral ou clique com o botão direito na árvore.
 
 ## Árvore de arquivos
 
@@ -43,8 +58,6 @@ Arraste um arquivo ou uma pasta para outra pasta para movê-lo, ou segure Alt pa
 
 | Ação | Teclas |
 |---|---|
-| Novo arquivo na pasta selecionada | <kbd>Ctrl+N</kbd> |
-| Nova pasta | <kbd>Ctrl+Shift+N</kbd> |
 | Renomear | <kbd>F2</kbd> |
 | Mover para a lixeira | <kbd>Delete</kbd> |
 | Recortar, copiar, colar | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> |

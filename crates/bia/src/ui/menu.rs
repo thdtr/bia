@@ -49,7 +49,7 @@ impl Item {
     }
 }
 
-const WIDTH: f32 = 240.0;
+const WIDTH: f32 = 320.0;
 
 /// The open menu, over the window. Clicking anywhere else closes it.
 pub fn view<'a>(app: &'a Bia, menu: &'a Menu) -> Element<'a, Message> {

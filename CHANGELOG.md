@@ -30,10 +30,27 @@ Notable changes to BIA are listed here. The format is based on
 - A new file's name can have folders in it, like `src/ui/menu.rs`. They're created too.
 - The tree scrolls to the file you're editing.
 - A right click on the path in the status bar copies it.
+- A menu button at the left of the status bar, with the usual commands.
+- `Ctrl+Shift+P` lists every command by name.
+- About BIA, with the version and a button that copies it for a bug report.
+- A list of every keyboard shortcut, from the menu.
+- Save as (`Ctrl+Shift+S`), Save all, Open file, Open recent and Close folder.
+- `Ctrl+Shift+T` reopens the last closed tab, at the line it was on.
+- A right click on a tab closes the others, the ones to the right, the saved ones or
+  all of them, and copies the file's path.
+- New windows, with `Ctrl+Shift+N`, `bia --new`, or a right click on BIA's icon on
+  Linux.
+- BIA remembers the window's size and place, and whether it was maximized.
+- Dropping a file or folder on the window opens it.
+- `Ctrl+Q` quits.
 
 ### Changed
 
 - The terminal panel sits under the editor and leaves the sidebar its full height.
+- `Ctrl+N` opens an empty tab that asks where to save it. What you type there is kept
+  until you save it, even if you quit. New files and folders inside a folder are made
+  with the buttons at the top of the tree or its right-click menu, and `Ctrl+Shift+N`
+  now opens a new window.
 - Names are typed in the tree itself, instead of a strip at the bottom of the sidebar.
   When renaming, the name comes selected without its extension. Moving to the trash
   asks in a dialog.

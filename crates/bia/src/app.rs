@@ -29,7 +29,7 @@ use bia_core::language::{
 };
 use bia_core::search::{self, Found, Matcher, QueryError};
 use bia_core::settings::{Settings, SettingsError};
-use bia_core::state::{self, OpenFile, Session, State};
+use bia_core::state::{OpenFile, Session, State};
 use bia_core::text;
 use bia_core::theme::Theme as BiaTheme;
 use bia_core::tree::{self, FileTree};
@@ -73,14 +73,27 @@ const LSP_DELAY: Duration = Duration::from_millis(150);
 /// Unsaved edits are written to `backups/` this long after the last one.
 const BACKUP_DELAY: Duration = Duration::from_secs(2);
 
-pub fn run(paths: Vec<PathBuf>) -> iced::Result {
-    iced::application(move || Bia::new(paths.clone()), Bia::update, ui::view)
+pub fn run(paths: Vec<PathBuf>, new: bool) -> iced::Result {
+    // The window comes back the size, place and shape it was.
+    let layout = State::load(&paths::state_file()).layout;
+    let size = layout.window_size.map_or(iced::Size::new(1180.0, 760.0), |(w, h)| {
+        iced::Size::new(w.max(520.0), h.max(320.0))
+    });
+    // A second window lands a little lower and to the right of the first.
+    let nudge = if new { 32.0 } else { 0.0 };
+    let position = match layout.window_position {
+        Some((x, y)) => window::Position::Specific(iced::Point::new(x + nudge, y + nudge)),
+        None => window::Position::default(),
+    };
+    iced::application(move || Bia::new(paths.clone(), new), Bia::update, ui::view)
         .default_font(Font::with_name(fonts::UI_FAMILY))
         .title(Bia::title)
         .theme(Bia::theme)
         .subscription(Bia::subscription)
         .window(window::Settings {
-            size: iced::Size::new(1180.0, 760.0),
+            size,
+            position,
+            maximized: layout.maximized,
             min_size: Some(iced::Size::new(520.0, 320.0)),
             icon: ui::style::window_icon(),
             exit_on_close_request: false,
@@ -136,7 +149,29 @@ pub enum Message {
     DragStart(Splitter),
     Dragged(iced::Point),
     DragEnd,
-    WindowResized(iced::Size),
+    WindowResized(window::Id, iced::Size),
+    WindowMoved(iced::Point),
+    /// Whether the window is maximized, asked after it changed size.
+    Maximized(bool),
+    /// A file or folder dropped on the window.
+    FileDropped(PathBuf),
+    /// A command from the palette, the menu or a button.
+    Run(crate::commands::Command),
+    /// Where "Save as" should write tab `.0` (`None`: cancelled), and
+    /// whether to close the tab after.
+    SaveAsPicked(PathBuf, Option<PathBuf>, bool),
+    /// Files chosen with "Open file".
+    FilesPicked(Option<Vec<PathBuf>>),
+    /// A right click on tab `.0`. A [`Message::TabMenu`] follows.
+    TabTarget(usize),
+    TabMenu(iced::Point),
+    /// Closes tabs on the side of tab `.0`.
+    CloseTabs(usize, CloseWhich),
+    /// The menu button in the status bar.
+    MainMenu,
+    CloseOverlay,
+    /// Puts this text on the clipboard and says so.
+    Copy(String),
     /// The file tree scrolled: offset and height of what's in sight.
     TreeScrolled(f32, f32),
     /// The mouse went down on a row of the tree: a click or a drag starts.
@@ -224,6 +259,29 @@ pub struct TreeDrag {
     pub moved: bool,
 }
 
+/// Which tabs "close others" and its kin close, next to a tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseWhich {
+    Others,
+    ToTheRight,
+    Saved,
+    All,
+}
+
+/// What a window over everything shows: about BIA, or the shortcuts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Overlay {
+    About,
+    Shortcuts,
+}
+
+/// What happens after unsaved files are saved or discarded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum After {
+    Quit,
+    CloseFolder,
+}
+
 /// The dividers you can drag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Splitter {
@@ -248,8 +306,9 @@ pub const TERMINAL_HEIGHT: f32 = 260.0;
 pub enum Dialog {
     /// A program is running in a terminal that is about to close.
     Busy(Closing),
-    /// Quitting with unsaved files: save all, discard, cancel.
-    Quit,
+    /// Quitting or closing the folder with unsaved files: save all,
+    /// discard, cancel.
+    Unsaved(After),
     /// Closing a tab with unsaved changes: save, discard, cancel.
     Close(PathBuf),
     /// Moving a file or folder to the trash: trash, cancel.
@@ -380,6 +439,10 @@ pub enum PaletteMode {
     Line,
     /// A new name for the symbol at `at` in `path` (language server).
     Rename { path: PathBuf, at: usize },
+    /// Ctrl+Shift+P: run a command by name.
+    Commands { results: Vec<crate::commands::Command> },
+    /// A folder opened before.
+    Recent { results: Vec<PathBuf> },
 }
 
 /// The files of the open folder, for "open file by name". Listed in the
@@ -480,6 +543,17 @@ pub struct Bia {
     drag: Option<Drag>,
     /// The size of the window's content.
     window: iced::Size,
+    window_id: Option<window::Id>,
+    /// The size before the window was maximized, which is what it comes
+    /// back to next time.
+    normal_size: iced::Size,
+    window_position: Option<iced::Point>,
+    maximized: bool,
+    pub overlay: Option<Overlay>,
+    /// Tabs closed lately, newest last, with their cursor, for Ctrl+Shift+T.
+    closed: Vec<(PathBuf, usize, usize)>,
+    /// The tab a right click landed on, until its menu opens.
+    tab_target: Option<usize>,
     pub dialog: Option<Dialog>,
     /// `font_size` as settings.json has it, while zoom changes the live one.
     font_size_setting: f32,
@@ -501,7 +575,7 @@ pub struct Bia {
 impl Bia {
     /// `paths` come from the command line. The first folder becomes the
     /// workspace (or the first file's folder), and files open in tabs.
-    pub fn new(paths: Vec<PathBuf>) -> (Self, Task<Message>) {
+    pub fn new(paths: Vec<PathBuf>, new_window: bool) -> (Self, Task<Message>) {
         let (settings, settings_error) = Settings::load_or_create(&paths::settings_file());
         let (look, errors) = Look::load(&settings, 0);
         let state = State::load(&paths::state_file());
@@ -537,6 +611,16 @@ impl Bia {
             terminal_height: state.layout.terminal_height.unwrap_or(TERMINAL_HEIGHT),
             drag: None,
             window: iced::Size::new(1200.0, 800.0),
+            window_id: None,
+            normal_size: state
+                .layout
+                .window_size
+                .map_or(iced::Size::new(1180.0, 760.0), |(w, h)| iced::Size::new(w, h)),
+            window_position: state.layout.window_position.map(|(x, y)| iced::Point::new(x, y)),
+            maximized: state.layout.maximized,
+            overlay: None,
+            closed: Vec::new(),
+            tab_target: None,
             panel: Panel::Files,
             project_search: ProjectSearch::default(),
             git: Arc::default(),
@@ -557,9 +641,15 @@ impl Bia {
         // With nothing on the command line, BIA reopens the last folder and
         // the files that were open in it.
         if paths.is_empty()
+            && !new_window
             && let Some(folder) = state.last_folder()
         {
             tasks.push(app.open_root(folder.to_path_buf(), true));
+        }
+        // Files never saved come back with what you typed. A second window
+        // leaves them to the first.
+        if !new_window {
+            app.restore_untitled();
         }
 
         for arg in paths {
@@ -601,7 +691,7 @@ impl Bia {
     pub fn title(&self) -> String {
         let tab = self.tabs.active().map(|t| {
             let dot = if t.is_dirty() { "● " } else { "" };
-            format!("{dot}{}", t.name())
+            format!("{dot}{}", self.tab_name(t))
         });
         let root = self.tree.as_ref().map(FileTree::root_name);
         let parts: Vec<String> = tab.into_iter().chain(root).chain(["BIA".to_owned()]).collect();
@@ -613,12 +703,14 @@ impl Bia {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        let keys = event::listen_with(|event, status, _window| match event {
+        let keys = event::listen_with(|event, status, window| match event {
             Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
             Event::Window(window::Event::CloseRequested) => Some(Message::CloseRequested),
             Event::Window(window::Event::Opened { size, .. } | window::Event::Resized(size)) => {
-                Some(Message::WindowResized(size))
+                Some(Message::WindowResized(window, size))
             }
+            Event::Window(window::Event::Moved(at)) => Some(Message::WindowMoved(at)),
+            Event::Window(window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
             Event::Keyboard(keyboard::Event::ModifiersChanged(m)) => {
                 Some(Message::ModifiersChanged(m))
             }
@@ -960,7 +1052,49 @@ impl Bia {
                 self.drag = None;
                 self.save_layout();
             }
-            Message::WindowResized(size) => self.window = size,
+            Message::WindowResized(id, size) => {
+                self.window = size;
+                self.window_id = Some(id);
+                return window::is_maximized(id).map(Message::Maximized);
+            }
+            Message::WindowMoved(at) => {
+                if !self.maximized {
+                    self.window_position = Some(at);
+                }
+            }
+            Message::Maximized(maximized) => {
+                self.maximized = maximized;
+                if !maximized {
+                    self.normal_size = self.window;
+                }
+            }
+            Message::FileDropped(path) => {
+                if path.is_dir() {
+                    return self.open_root(path, true);
+                }
+                return self.open(path);
+            }
+            Message::Run(command) => {
+                self.menu = None;
+                self.palette = None;
+                return self.run(command);
+            }
+            Message::SaveAsPicked(from, to, close) => return self.save_as_picked(&from, to, close),
+            Message::FilesPicked(files) => {
+                let opened: Vec<_> =
+                    files.unwrap_or_default().into_iter().map(|f| self.open(f)).collect();
+                return Task::batch(opened);
+            }
+            Message::TabTarget(index) => self.tab_target = Some(index),
+            Message::TabMenu(at) => self.tab_menu(at),
+            Message::CloseTabs(index, which) => return self.close_tabs(index, which),
+            Message::MainMenu => self.main_menu(),
+            Message::CloseOverlay => self.overlay = None,
+            Message::Copy(text) => {
+                let notice = self.look.i18n.f("notice.copied", &[("text", &text)]);
+                self.info(notice);
+                return iced::clipboard::write(text);
+            }
             Message::EditorScrolled(pane, offset) => {
                 if let Some(tab) = self.tabs.active_in_mut(pane) {
                     tab.scroll = offset;
@@ -974,6 +1108,9 @@ impl Bia {
             }
             Message::Save => {
                 self.lsp.completion = None;
+                if self.tabs.active().is_some_and(is_untitled) {
+                    return self.save_as(self.tabs.active_index(), false);
+                }
                 self.save(self.tabs.active_index(), false);
                 if let Some(path) = self.tabs.active().map(|t| t.path.clone()) {
                     self.sync_lsp();
@@ -1137,6 +1274,8 @@ impl Bia {
                 if let Some(palette) = &mut self.palette {
                     let count = match &palette.mode {
                         PaletteMode::Files { results, .. } => results.len(),
+                        PaletteMode::Commands { results } => results.len(),
+                        PaletteMode::Recent { results } => results.len(),
                         PaletteMode::Line | PaletteMode::Rename { .. } => 0,
                     };
                     palette.selected = match shortcut {
@@ -1161,14 +1300,12 @@ impl Bia {
             Shortcut::Split => {
                 return self.update(Message::MoveToOtherSide(self.tabs.active_index()));
             }
-            Shortcut::NewFile | Shortcut::NewFolder => {
-                let Some(dir) = self.target_dir() else { return Task::none() };
-                return self.tree_action(if shortcut == Shortcut::NewFile {
-                    TreeAction::NewFile(dir)
-                } else {
-                    TreeAction::NewFolder(dir)
-                });
-            }
+            Shortcut::NewFile => return self.new_untitled(),
+            Shortcut::NewWindow => return self.new_window(),
+            Shortcut::SaveAs => return self.save_as(self.tabs.active_index(), false),
+            Shortcut::ReopenTab => return self.reopen_tab(),
+            Shortcut::Commands => return self.open_commands(),
+            Shortcut::Quit => return self.quit(true),
             // These reach the app only when no editor, terminal or field took
             // them, so they act on what's selected in the tree.
             Shortcut::Rename | Shortcut::Delete | Shortcut::Cut | Shortcut::Copy => {
@@ -1192,6 +1329,8 @@ impl Bia {
             Shortcut::Escape => {
                 if self.dialog.is_some() {
                     self.dialog = None;
+                } else if self.overlay.is_some() {
+                    self.overlay = None;
                 } else if self.menu.is_some() {
                     self.menu = None;
                 } else if self.palette.is_some() {
@@ -1383,13 +1522,13 @@ impl Bia {
     }
 
     fn save_layout(&self) {
-        let layout = state::Layout {
-            sidebar_width: Some(self.sidebar_width),
-            sidebar_hidden: !self.sidebar,
-            terminal_height: Some(self.terminal_height),
-        };
+        let (width, hidden, height) = (self.sidebar_width, !self.sidebar, self.terminal_height);
         // Not worth an error: the worst case is the default sizes next time.
-        let _ = State::update(&paths::state_file(), |state| state.layout = layout);
+        let _ = State::update(&paths::state_file(), |state| {
+            state.layout.sidebar_width = Some(width);
+            state.layout.sidebar_hidden = hidden;
+            state.layout.terminal_height = Some(height);
+        });
     }
 
     // ── Quitting ─────────────────────────────────────────────────────────
@@ -1399,12 +1538,344 @@ impl Bia {
     fn quit(&mut self, check_terminals: bool) -> Task<Message> {
         if check_terminals && self.terminals.any_busy() {
             self.dialog = Some(Dialog::Busy(Closing::Quit));
-        } else if self.tabs.any_dirty() {
-            self.dialog = Some(Dialog::Quit);
+        } else if !self.dirty_files().is_empty() {
+            self.dialog = Some(Dialog::Unsaved(After::Quit));
         } else {
             return self.exit();
         }
         Task::none()
+    }
+
+    /// Tabs with unsaved changes to a file. Files never saved aren't
+    /// among them: they're kept for next time instead.
+    pub fn dirty_files(&self) -> Vec<usize> {
+        self.tabs
+            .dirty_indices()
+            .into_iter()
+            .filter(|&i| !self.tabs.iter().nth(i).is_some_and(is_untitled))
+            .collect()
+    }
+
+    /// "Close folder": back to the welcome screen, after asking about
+    /// unsaved files.
+    fn close_folder(&mut self, ask: bool) -> Task<Message> {
+        if ask && !self.dirty_files().is_empty() {
+            self.dialog = Some(Dialog::Unsaved(After::CloseFolder));
+            return Task::none();
+        }
+        self.save_session();
+        let named: Vec<usize> = (0..self.tabs.iter().count())
+            .rev()
+            .filter(|&i| !self.tabs.iter().nth(i).is_some_and(is_untitled))
+            .collect();
+        for i in named {
+            if let Some(tab) = self.tabs.remove(i)
+                && tab.backup.is_some()
+            {
+                self.backups.remove(tab.path);
+            }
+        }
+        self.tree = None;
+        self.selected = None;
+        self.prompt = None;
+        self.find = None;
+        self.git = Arc::default();
+        self.project_search = ProjectSearch::default();
+        self.remember_root = false;
+        // Next time BIA starts empty too.
+        let _ = State::update(&paths::state_file(), |state| state.last_folder = None);
+        self.sync_lsp();
+        Task::none()
+    }
+
+    // ── Commands ─────────────────────────────────────────────────────────
+
+    fn run(&mut self, command: crate::commands::Command) -> Task<Message> {
+        use crate::commands::Command as C;
+        let shortcut = |s| Message::Shortcut(s);
+        match command {
+            C::NewFile => return self.new_untitled(),
+            C::NewWindow => return self.new_window(),
+            C::OpenFile => {
+                let start = self.tree.as_ref().map(|t| t.root().to_path_buf());
+                return Task::perform(pick_files(start), Message::FilesPicked);
+            }
+            C::OpenFolder => return self.update(Message::OpenFolder),
+            C::OpenRecent => return self.open_recent(),
+            C::Save => return self.update(Message::Save),
+            C::SaveAs => return self.save_as(self.tabs.active_index(), false),
+            C::SaveAll => return self.save_all(),
+            C::CloseTab => return self.close_tab(self.tabs.active_index()),
+            C::ReopenTab => return self.reopen_tab(),
+            C::CloseFolder => return self.close_folder(true),
+            C::QuickOpen => return self.update(shortcut(Shortcut::QuickOpen)),
+            C::GoToLine => return self.update(shortcut(Shortcut::GoToLine)),
+            C::Find => return self.update(shortcut(Shortcut::Find)),
+            C::Replace => return self.update(shortcut(Shortcut::Replace)),
+            C::FindInFiles => return self.update(shortcut(Shortcut::FindInFiles)),
+            C::Sidebar => self.toggle_sidebar(),
+            C::Terminal => return self.toggle_terminal(),
+            C::NewTerminal => return self.new_terminal(),
+            C::Split => return self.update(shortcut(Shortcut::Split)),
+            C::Preview => return self.toggle_preview(),
+            C::ZoomIn => self.zoom(Some(1.0)),
+            C::ZoomOut => self.zoom(Some(-1.0)),
+            C::ZoomReset => self.zoom(None),
+            C::CollapseTree => return self.tree_action(TreeAction::CollapseAll),
+            C::Settings => return self.update(Message::OpenSettings),
+            C::Commands => return self.open_commands(),
+            C::Shortcuts => self.overlay = Some(Overlay::Shortcuts),
+            C::About => self.overlay = Some(Overlay::About),
+            C::Quit => return self.quit(true),
+        }
+        Task::none()
+    }
+
+    /// Ctrl+Shift+N: another BIA, with nothing open.
+    fn new_window(&mut self) -> Task<Message> {
+        let started = std::env::current_exe().and_then(|exe| {
+            std::process::Command::new(exe)
+                .arg("--new")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+        });
+        if let Err(e) = started {
+            let text = self.look.i18n.f("notice.fs_error", &[("error", &e)]);
+            self.error(text);
+        }
+        Task::none()
+    }
+
+    /// The menu button: the commands you look for in a menu bar.
+    fn main_menu(&mut self) {
+        use crate::commands::Command;
+        use ui::menu::Item;
+        let items = Command::MENU
+            .into_iter()
+            .map(|c| match c {
+                Some(c) => Item::action(c.label(), c.keys(), Message::Run(c)),
+                None => Item::Separator,
+            })
+            .collect();
+        // It opens above the button, at the left of the status bar.
+        let at = iced::Point::new(8.0, self.window.height - 26.0);
+        self.menu = Some(ui::menu::Menu { at, items });
+    }
+
+    // ── Files never saved ────────────────────────────────────────────────
+
+    /// Ctrl+N: an empty tab with no file yet. Saving asks where to put it.
+    fn new_untitled(&mut self) -> Task<Message> {
+        let dir = paths::untitled_dir();
+        let number = (1..)
+            .find(|n| self.tabs.position(&dir.join(format!("untitled-{n}"))).is_none())
+            .unwrap_or(1);
+        self.open_untitled(dir.join(format!("untitled-{number}")), "")
+    }
+
+    fn open_untitled(&mut self, path: PathBuf, text: &str) -> Task<Message> {
+        let Ok(doc) = Document::from_bytes(b"") else { return Task::none() };
+        let indent = Indent::for_file(&path, "", self.settings.tab_size);
+        let mut buffer = Buffer::new(doc, "Plain Text".to_owned(), indent);
+        buffer.editor.auto_close = self.settings.auto_close;
+        buffer.editor.tab_width = self.settings.tab_size;
+        if !text.is_empty() {
+            buffer.recover(text);
+        }
+        self.tabs.insert(Tab::new(path, Body::Text(buffer)));
+        self.focus_editor()
+    }
+
+    /// The files never saved that were open last time, from their backups.
+    fn restore_untitled(&mut self) {
+        let dir = paths::untitled_dir();
+        let mut found: Vec<_> = backup::all(&paths::backups_dir())
+            .into_iter()
+            .filter(|b| b.path.parent() == Some(dir.as_path()))
+            .collect();
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+        for b in found {
+            let _ = self.open_untitled(b.path, &b.text);
+        }
+    }
+
+    /// The name a tab shows: "Untitled 2", "Preview README.md" or the
+    /// file's name.
+    pub fn tab_name(&self, tab: &Tab) -> String {
+        let t = &self.look.i18n;
+        if let Some(n) = untitled_number(&tab.path) {
+            return t.f("untitled", &[("number", &n)]);
+        }
+        if tab.is_preview() {
+            return t.f("tabs.preview", &[("name", &tab.name())]);
+        }
+        tab.name()
+    }
+
+    // ── Save as, save all, reopen ────────────────────────────────────────
+
+    /// Asks where to save tab `index`, then saves it there, and closes it
+    /// if `close`.
+    fn save_as(&mut self, index: usize, close: bool) -> Task<Message> {
+        let Some(tab) = self.tabs.iter().nth(index).filter(|t| t.buffer().is_some()) else {
+            return Task::none();
+        };
+        let path = tab.path.clone();
+        let (dir, name) = if is_untitled(tab) {
+            (self.tree.as_ref().map(|t| t.root().to_path_buf()), String::new())
+        } else {
+            (path.parent().map(Path::to_path_buf), tab.name())
+        };
+        Task::perform(pick_save(dir, name), move |to| {
+            Message::SaveAsPicked(path.clone(), to, close)
+        })
+    }
+
+    fn save_as_picked(&mut self, from: &Path, to: Option<PathBuf>, close: bool) -> Task<Message> {
+        let Some(to) = to else { return Task::none() };
+        let Some(index) = self.tabs.position(from) else { return Task::none() };
+        // Another tab showing the file being replaced would show old text.
+        if let Some(other) = self.tabs.position(&to).filter(|&i| i != index) {
+            if self.tabs.iter().nth(other).is_some_and(Tab::is_dirty) {
+                let text =
+                    self.look.i18n.f("prompt.unsaved", &[("name", &tree::display_name(&to))]);
+                self.error(text);
+                return Task::none();
+            }
+            let _ = self.remove_tab(other);
+        }
+        let Some(index) = self.tabs.position(from) else { return Task::none() };
+        let Some(tab) = self.tabs.get_mut(index) else { return Task::none() };
+        let Some(buffer) = tab.buffer_mut() else { return Task::none() };
+        match document::write_atomic(&to, &buffer.encoded()) {
+            Ok(modified) => buffer.mark_saved(modified),
+            Err(e) => {
+                let name = tree::display_name(&to);
+                let text =
+                    self.look.i18n.f("notice.save_failed", &[("name", &name), ("error", &e)]);
+                self.error(text);
+                return Task::none();
+            }
+        }
+        if tab.backup.take().is_some() {
+            self.backups.remove(from.to_path_buf());
+        }
+        tab.path = to.clone();
+        let text = tab.buffer().map(Buffer::text).unwrap_or_default();
+        let syntax = self.detect_syntax(&to, &text);
+        if let Some(buffer) = self.tabs.get_mut(index).and_then(Tab::buffer_mut) {
+            buffer.editor.syntax = syntax;
+        }
+        let name = tree::display_name(&to);
+        let notice = self.look.i18n.f("notice.saved", &[("name", &name)]);
+        self.info(notice);
+        self.after_save(&to);
+        if let Some(tree) = &mut self.tree {
+            tree.refresh();
+            self.files = None;
+        }
+        self.sync_lsp();
+        if close {
+            return self.remove_tab(index);
+        }
+        Task::batch([self.reveal_active(), git_base(to), self.refresh_git()])
+    }
+
+    /// Saves every tab with changes. Files never saved are left for you to
+    /// save one by one, since each needs a name.
+    fn save_all(&mut self) -> Task<Message> {
+        for i in self.dirty_files() {
+            self.save(i, false);
+        }
+        self.sync_lsp();
+        self.refresh_git()
+    }
+
+    /// Ctrl+Shift+T: the tab closed last, at the line it was on.
+    fn reopen_tab(&mut self) -> Task<Message> {
+        while let Some((path, line, column)) = self.closed.pop() {
+            if !path.is_file() || self.tabs.position(&path).is_some() {
+                continue;
+            }
+            let open = self.open(path);
+            let go = self.go_to_line(line, column);
+            return Task::batch([open, go]);
+        }
+        let text = self.look.i18n.t("notice.reopened_none").to_owned();
+        self.info(text);
+        Task::none()
+    }
+
+    // ── Tab menu ─────────────────────────────────────────────────────────
+
+    fn tab_menu(&mut self, at: iced::Point) {
+        use ui::menu::Item;
+        let Some(index) = self.tab_target.take() else { return };
+        let Some(tab) = self.tabs.iter().nth(index) else { return };
+        let path = tab.path.clone();
+        let close = |which| Message::CloseTabs(index, which);
+        let mut items = vec![
+            Item::action("tabs.close", Some("Ctrl+W"), Message::CloseTab(index)),
+            Item::action("tabs.close_others", None, close(CloseWhich::Others)),
+            Item::action("tabs.close_right", None, close(CloseWhich::ToTheRight)),
+            Item::action("tabs.close_saved", None, close(CloseWhich::Saved)),
+            Item::action("tabs.close_all", None, close(CloseWhich::All)),
+        ];
+        if !is_untitled(tab) {
+            items.extend([
+                Item::Separator,
+                Item::action(
+                    "tree.copy_path",
+                    None,
+                    Message::Tree(TreeAction::CopyPath(path.clone())),
+                ),
+                Item::action(
+                    "tree.copy_relative_path",
+                    None,
+                    Message::Tree(TreeAction::CopyRelativePath(path.clone())),
+                ),
+                Item::action("tree.reveal", None, Message::Tree(TreeAction::Reveal(path))),
+            ]);
+        }
+        items.extend([
+            Item::Separator,
+            Item::action("cmd.split", Some("Ctrl+\\"), Message::MoveToOtherSide(index)),
+        ]);
+        self.menu = Some(ui::menu::Menu { at, items });
+    }
+
+    /// Closes the tabs `which` names, on tab `index`'s side. Tabs with
+    /// unsaved changes stay, and the first one asks what to do.
+    fn close_tabs(&mut self, index: usize, which: CloseWhich) -> Task<Message> {
+        let Some(pane) = self.tabs.iter().nth(index).map(|t| t.pane) else { return Task::none() };
+        let targets: Vec<PathBuf> = self
+            .tabs
+            .in_pane(pane)
+            .filter(|(i, t)| match which {
+                CloseWhich::Others => *i != index,
+                CloseWhich::ToTheRight => *i > index,
+                CloseWhich::Saved => !t.is_dirty(),
+                CloseWhich::All => true,
+            })
+            .map(|(_, t)| t.path.clone())
+            .collect();
+        let mut tasks = Vec::new();
+        let mut asked = false;
+        for path in targets {
+            let Some(i) = self.tabs.iter().position(|t| t.path == path) else { continue };
+            if self.tabs.iter().nth(i).is_some_and(Tab::is_dirty) {
+                if !asked {
+                    asked = true;
+                    self.tabs.select(i);
+                    tasks.push(self.close_tab(i));
+                }
+                continue;
+            }
+            tasks.push(self.remove_tab(i));
+        }
+        Task::batch(tasks)
     }
 
     // ── Language servers ─────────────────────────────────────────────────
@@ -1784,15 +2255,38 @@ impl Bia {
     /// backup is needed any more.
     fn exit(&mut self) -> Task<Message> {
         self.save_session();
+        self.save_window();
         // Servers read EOF on their stdin and stop.
         self.lsp.restart();
+        let dir = paths::backups_dir();
         for tab in self.tabs.iter_mut() {
+            // Files never saved stay in their backups, up to the last key,
+            // and come back next time.
+            if untitled_number(&tab.path).is_some() {
+                if let Some(buffer) = tab.buffer().filter(|b| b.is_dirty()) {
+                    let _ = backup::write(
+                        &dir,
+                        &backup::Backup::new(tab.path.clone(), buffer.text(), None),
+                    );
+                }
+                continue;
+            }
             if tab.backup.take().is_some() {
                 self.backups.remove(tab.path.clone());
             }
         }
         self.backups.flush();
         iced::exit()
+    }
+
+    /// The window's size, place and whether it was maximized, for next time.
+    fn save_window(&self) {
+        let (size, at, maximized) = (self.normal_size, self.window_position, self.maximized);
+        let _ = State::update(&paths::state_file(), |state| {
+            state.layout.window_size = Some((size.width, size.height));
+            state.layout.window_position = at.map(|p| (p.x, p.y));
+            state.layout.maximized = maximized;
+        });
     }
 
     fn open(&mut self, path: PathBuf) -> Task<Message> {
@@ -1949,6 +2443,14 @@ impl Bia {
 
     fn remove_tab(&mut self, index: usize) -> Task<Message> {
         let Some(tab) = self.tabs.remove(index) else { return Task::none() };
+        if let Some(buffer) = tab.buffer().filter(|_| !is_untitled(&tab)) {
+            let (line, column) = buffer.line_col();
+            self.closed.retain(|(p, ..)| p != &tab.path);
+            self.closed.push((tab.path.clone(), line - 1, column - 1));
+            if self.closed.len() > 30 {
+                self.closed.remove(0);
+            }
+        }
         if tab.is_preview() {
             // Nobody looks at the rendered Markdown anymore.
             if let Some(i) = self.tabs.position(&tab.path)
@@ -1977,13 +2479,18 @@ impl Bia {
             (Dialog::Busy(Closing::Quit), _) => return self.quit(false),
             (Dialog::Busy(Closing::Terminal(id)), _) => return self.close_terminal(id),
             (Dialog::Trash(path), _) => return self.trash(&path),
-            (Dialog::Quit, Choice::Save) => {
-                let all_saved = self.tabs.dirty_indices().into_iter().all(|i| self.save(i, false));
+            (Dialog::Unsaved(after), Choice::Save) => {
+                let all_saved = self.dirty_files().into_iter().all(|i| self.save(i, false));
                 if all_saved {
-                    return self.exit();
+                    return self.after_unsaved(after);
                 }
             }
-            (Dialog::Quit, Choice::Discard) => return self.exit(),
+            (Dialog::Unsaved(after), Choice::Discard) => return self.after_unsaved(after),
+            (Dialog::Close(path), Choice::Save) if untitled_number(&path).is_some() => {
+                if let Some(i) = self.tabs.position(&path) {
+                    return self.save_as(i, true);
+                }
+            }
             (Dialog::Close(path), choice) => {
                 if let Some(i) = self.tabs.position(&path)
                     && (choice == Choice::Discard || self.save(i, false))
@@ -1999,6 +2506,14 @@ impl Bia {
             (Dialog::Conflict(path), Choice::Discard) => self.reload(&path),
         }
         Task::none()
+    }
+
+    /// Unsaved files were saved, or you chose to drop their edits.
+    fn after_unsaved(&mut self, after: After) -> Task<Message> {
+        match after {
+            After::Quit => self.exit(),
+            After::CloseFolder => self.close_folder(false),
+        }
     }
 
     /// Replaces a tab's text with the file on disk, dropping unsaved edits.
@@ -2815,9 +3330,67 @@ impl Bia {
         Task::batch([operation::focus(PALETTE_ID), list])
     }
 
+    /// Ctrl+Shift+P: every command, found by typing part of its name.
+    fn open_commands(&mut self) -> Task<Message> {
+        let mode = PaletteMode::Commands { results: Vec::new() };
+        self.palette = Some(Palette { mode, query: String::new(), selected: 0 });
+        self.prompt = None;
+        self.menu = None;
+        self.refresh_palette();
+        operation::focus(PALETTE_ID)
+    }
+
+    /// The folders opened before, found by typing part of their path.
+    fn open_recent(&mut self) -> Task<Message> {
+        let mode = PaletteMode::Recent { results: Vec::new() };
+        self.palette = Some(Palette { mode, query: String::new(), selected: 0 });
+        self.prompt = None;
+        self.menu = None;
+        self.refresh_palette();
+        operation::focus(PALETTE_ID)
+    }
+
     /// Ranks the files again after the query changed. With no query, the
     /// other open files are listed, so Ctrl+P, Enter goes back and forth.
     fn refresh_palette(&mut self) {
+        let query = self.palette.as_ref().map(|p| p.query.clone()).unwrap_or_default();
+        let ranked = |names: &[String], limit: usize| -> Vec<usize> {
+            if query.trim().is_empty() {
+                (0..names.len().min(limit)).collect()
+            } else {
+                fuzzy::rank(&query, names, limit)
+            }
+        };
+        match self.palette.as_ref().map(|p| &p.mode) {
+            Some(PaletteMode::Commands { .. }) => {
+                use crate::commands::Command;
+                let names: Vec<String> =
+                    Command::ALL.iter().map(|c| self.look.i18n.t(c.label()).to_owned()).collect();
+                let found = ranked(&names, Command::ALL.len());
+                if let Some(Palette { mode: PaletteMode::Commands { results }, selected, .. }) =
+                    &mut self.palette
+                {
+                    *results = found.into_iter().map(|i| Command::ALL[i]).collect();
+                    *selected = 0;
+                }
+                return;
+            }
+            Some(PaletteMode::Recent { .. }) => {
+                let names: Vec<String> =
+                    self.recent.iter().map(|p| p.display().to_string()).collect();
+                let found = ranked(&names, PALETTE_ROWS);
+                let paths: Vec<PathBuf> =
+                    found.into_iter().map(|i| self.recent[i].clone()).collect();
+                if let Some(Palette { mode: PaletteMode::Recent { results }, selected, .. }) =
+                    &mut self.palette
+                {
+                    *results = paths;
+                    *selected = 0;
+                }
+                return;
+            }
+            _ => {}
+        }
         let root = self.tree.as_ref().map(|t| t.root().to_path_buf());
         let active = self.tabs.active_index();
         let open: Vec<String> = self
@@ -2843,6 +3416,21 @@ impl Bia {
 
     fn submit_palette(&mut self) -> Task<Message> {
         let Some(palette) = &self.palette else { return Task::none() };
+        match &palette.mode {
+            PaletteMode::Commands { results } => {
+                let Some(&command) = results.get(palette.selected) else { return Task::none() };
+                self.palette = None;
+                return self.run(command);
+            }
+            PaletteMode::Recent { results } => {
+                let Some(folder) = results.get(palette.selected).cloned() else {
+                    return Task::none();
+                };
+                self.palette = None;
+                return self.open_root(folder, true);
+            }
+            _ => {}
+        }
         if let PaletteMode::Rename { path, at } = &palette.mode {
             let (path, at, name) = (path.clone(), *at, palette.query.trim().to_owned());
             self.palette = None;
@@ -2883,7 +3471,9 @@ impl Bia {
                     (None, _) => return Task::none(),
                 }
             }
-            PaletteMode::Rename { .. } => return Task::none(),
+            PaletteMode::Rename { .. }
+            | PaletteMode::Commands { .. }
+            | PaletteMode::Recent { .. } => return Task::none(),
         };
         self.palette = None;
         self.go_to_line(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1))
@@ -2907,6 +3497,35 @@ fn word_start(rope: &ropey::Rope, cursor: usize) -> usize {
         start -= c.len_utf8();
     }
     start
+}
+
+/// The number of a file never saved, from its stand-in path.
+pub fn untitled_number(path: &Path) -> Option<u32> {
+    if path.parent() != Some(paths::untitled_dir().as_path()) {
+        return None;
+    }
+    path.file_name()?.to_str()?.strip_prefix("untitled-")?.parse().ok()
+}
+
+pub fn is_untitled(tab: &Tab) -> bool {
+    untitled_number(&tab.path).is_some()
+}
+
+async fn pick_files(start: Option<PathBuf>) -> Option<Vec<PathBuf>> {
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if let Some(dir) = start {
+        dialog = dialog.set_directory(dir);
+    }
+    let files = dialog.pick_files().await?;
+    Some(files.into_iter().map(|f| f.path().to_path_buf()).collect())
+}
+
+async fn pick_save(dir: Option<PathBuf>, name: String) -> Option<PathBuf> {
+    let mut dialog = rfd::AsyncFileDialog::new().set_file_name(name);
+    if let Some(dir) = dir {
+        dialog = dialog.set_directory(dir);
+    }
+    dialog.save_file().await.map(|f| f.path().to_path_buf())
 }
 
 fn fs_error_text(i18n: &I18n, e: FsError) -> String {

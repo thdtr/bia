@@ -287,10 +287,6 @@ impl Tabs {
         }
     }
 
-    pub fn any_dirty(&self) -> bool {
-        self.list.iter().any(Tab::is_dirty)
-    }
-
     pub fn dirty_indices(&self) -> Vec<usize> {
         (0..self.list.len()).filter(|&i| self.list[i].is_dirty()).collect()
     }

@@ -164,7 +164,7 @@ fn is_app_shortcut(
     if mods.shift() {
         return c != 'c' && c != 'v';
     }
-    matches!(c, 'p' | '`' | ',' | '=' | '+' | '-' | '0' | 'b')
+    matches!(c, 'p' | '`' | ',' | '=' | '+' | '-' | '0' | 'b' | 'q')
 }
 
 impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {

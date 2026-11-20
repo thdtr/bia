@@ -56,6 +56,8 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Árvore de arquivos com uma pasta por linha. Crie, renomeie, mova, copie e mande para a lixeira ali mesmo, com o botão direito ou arrastando
 - Destaque de sintaxe para umas 200 linguagens, e outras com um arquivo `.sublime-syntax` ([veja como](docs/LANGUAGES.md))
 - Números de linha, abas, desfazer e refazer
+- Um menu, todos os comandos pelo nome (`Ctrl+Shift+P`) e uma janela Sobre
+- Arquivos novos guardados até você salvar, mesmo se sair
 - Buscar e substituir, com maiúsculas, palavra inteira e regex
 - Busca em todos os arquivos, pulando o que está no `.gitignore`
 - Abrir arquivo pelo nome, ir para uma linha
@@ -108,7 +110,11 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Desfazer / refazer |
 | `Ctrl+Shift+V` | Prévia de Markdown |
 | `Ctrl+B` | Mostrar ou esconder a barra lateral |
-| `Ctrl+N` / `Ctrl+Shift+N` | Novo arquivo / nova pasta |
+| `Ctrl+N` / `Ctrl+Shift+N` | Novo arquivo / nova janela |
+| `Ctrl+Shift+S` | Salvar como |
+| `Ctrl+Shift+T` | Reabrir a aba fechada |
+| `Ctrl+Shift+P` | Todos os comandos |
+| `Ctrl+Q` | Sair |
 | `F2` / `Delete` | Renomear / mandar para a lixeira |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Fonte maior / menor / original |
 | `` Ctrl+` `` | Mostrar / esconder o terminal |

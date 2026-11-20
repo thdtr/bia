@@ -36,6 +36,12 @@ pub fn backups_dir() -> PathBuf {
     config_dir().join("backups")
 }
 
+/// Where files that were never saved would live. Nothing is written here:
+/// it only gives them a path, so their backups have a name.
+pub fn untitled_dir() -> PathBuf {
+    config_dir().join("untitled")
+}
+
 pub fn themes_dir() -> PathBuf {
     config_dir().join("themes")
 }

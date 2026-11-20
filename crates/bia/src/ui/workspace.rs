@@ -104,10 +104,13 @@ fn tab_strip(app: &Bia, pane: Pane) -> Element<'_, Message> {
             Message::MoveToOtherSide(index),
         ));
     }
-    container(row![tabs, actions].align_y(Alignment::Center).height(Length::Fixed(36.0)))
-        .width(Fill)
-        .style(style::surface(c.panel, c.text))
-        .into()
+    let strip =
+        container(row![tabs, actions].align_y(Alignment::Center).height(Length::Fixed(36.0)))
+            .width(Fill)
+            .style(style::surface(c.panel, c.text));
+    // Tabs say which one a right click was on; the strip, outside the
+    // scrolling, opens the menu where the mouse is.
+    super::menu::on_right_click(strip, Message::TabMenu)
 }
 
 /// One tab. `marker` is the color of the bar under it when it is the
@@ -131,12 +134,7 @@ fn tab_view<'a>(
     .style(style::quiet(c))
     .on_press(Message::CloseTab(index));
 
-    let name = if tab.is_preview() {
-        app.look.i18n.f("tabs.preview", &[("name", &tab.name())])
-    } else {
-        tab.name()
-    };
-    let title = button(label(app, name))
+    let title = button(label(app, app.tab_name(tab)))
         .padding(Padding { top: 9.0, bottom: 9.0, left: 14.0, right: 2.0 })
         .style(style::tab(c, active))
         .on_press(Message::SelectTab(index));
@@ -157,7 +155,8 @@ fn tab_view<'a>(
 
     let tab = column![body, marker].width(Length::Shrink);
     let separator = rule::vertical(1).style(style::rule(c));
-    mouse_area(row![tab, separator]).on_middle_press(Message::CloseTab(index)).into()
+    let area = mouse_area(row![tab, separator]).on_middle_press(Message::CloseTab(index));
+    super::menu::on_right_click(area, move |_| Message::TabTarget(index))
 }
 
 fn find_bar(app: &Bia) -> Element<'_, Message> {

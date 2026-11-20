@@ -10,13 +10,19 @@ On macOS, most shortcuts use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd>. The tab
 
 | Action | Linux and Windows | macOS |
 |---|---|---|
+| New file | <kbd>Ctrl+N</kbd> | <kbd>⌘N</kbd> |
+| New window | <kbd>Ctrl+Shift+N</kbd> | <kbd>⌘⇧N</kbd> |
 | Open folder | <kbd>Ctrl+O</kbd> | <kbd>⌘O</kbd> |
 | Open file by name | <kbd>Ctrl+P</kbd> | <kbd>⌘P</kbd> |
 | Save | <kbd>Ctrl+S</kbd> | <kbd>⌘S</kbd> |
+| Save as | <kbd>Ctrl+Shift+S</kbd> | <kbd>⌘⇧S</kbd> |
 | Close tab | <kbd>Ctrl+W</kbd> | <kbd>⌘W</kbd> |
+| Reopen the closed tab | <kbd>Ctrl+Shift+T</kbd> | <kbd>⌘⇧T</kbd> |
 | Next tab | <kbd>Ctrl+Tab</kbd> | <kbd>⌃Tab</kbd> |
 | Previous tab | <kbd>Ctrl+Shift+Tab</kbd> | <kbd>⌃⇧Tab</kbd> |
 | Open `settings.json` | <kbd>Ctrl+,</kbd> | <kbd>⌘,</kbd> |
+| All commands | <kbd>Ctrl+Shift+P</kbd> | <kbd>⌘⇧P</kbd> |
+| Quit | <kbd>Ctrl+Q</kbd> | <kbd>⌘Q</kbd> |
 
 ## Editing
 
@@ -71,8 +77,6 @@ Undo and redo group changes by word.
 
 | Action | Linux and Windows | macOS |
 |---|---|---|
-| New file | <kbd>Ctrl+N</kbd> | <kbd>⌘N</kbd> |
-| New folder | <kbd>Ctrl+Shift+N</kbd> | <kbd>⌘⇧N</kbd> |
 | Rename | <kbd>F2</kbd> | <kbd>F2</kbd> |
 | Move to the trash | <kbd>Delete</kbd> | <kbd>⌦</kbd> |
 | Cut, copy, paste in the tree | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> | <kbd>⌘X</kbd>, <kbd>⌘C</kbd>, <kbd>⌘V</kbd> |
