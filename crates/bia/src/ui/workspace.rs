@@ -83,7 +83,7 @@ fn tab_strip(app: &Bia, pane: Pane) -> Element<'_, Message> {
         };
         tab_view(app, i, tab, marker)
     });
-    let strip = Row::with_children(tabs).height(Length::Fixed(36.0));
+    let strip = Row::with_children(tabs).height(Length::Fixed(40.0));
     let tabs = scrollable(strip)
         .direction(scrollable::Direction::Horizontal(
             scrollable::Scrollbar::default().width(2).scroller_width(2),
@@ -102,10 +102,11 @@ fn tab_strip(app: &Bia, pane: Pane) -> Element<'_, Message> {
             label,
             Some(keys),
             Message::MoveToOtherSide(index),
+            true,
         ));
     }
     let strip =
-        container(row![tabs, actions].align_y(Alignment::Center).height(Length::Fixed(36.0)))
+        container(row![tabs, actions].align_y(Alignment::Center).height(Length::Fixed(40.0)))
             .width(Fill)
             .style(style::surface(c.panel, c.text));
     // Tabs say which one a right click was on; the strip, outside the
@@ -130,7 +131,7 @@ fn tab_view<'a>(
     } else {
         c.muted
     }))
-    .padding([0, 4])
+    .padding([2, 6])
     .style(style::quiet(c))
     .on_press(Message::CloseTab(index));
 

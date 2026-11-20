@@ -19,6 +19,9 @@ pub(crate) use explorer::row_height;
 pub mod menu;
 mod palette;
 mod panel;
+
+/// Height of the status bar: room for 24 px buttons.
+pub const STATUS_HEIGHT: f32 = 28.0;
 mod search;
 pub mod style;
 mod workspace;
@@ -102,7 +105,9 @@ pub(crate) fn option_toggle<'a>(
         .size(app.settings.ui_font_size - 1.0)
         .color(if on { c.accent } else { c.muted });
     let button = button(face).padding([3, 6]).style(style::outlined(c, on)).on_press(message);
-    tooltip(button, tip(app, app.look.i18n.t(name).to_owned()), tooltip::Position::Bottom).into()
+    tooltip(button, tip(app, app.look.i18n.t(name).to_owned()), tooltip::Position::Bottom)
+        .gap(panel::TIP_GAP)
+        .into()
 }
 
 /// The small card a tooltip shows.
@@ -285,25 +290,28 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
 
     let mut start = row![].spacing(10).align_y(Alignment::Center);
     let menu = button(explorer::icon(crate::icons::get("menu"), c.muted))
-        .padding(2)
+        .padding([4, 6])
         .style(style::quiet(c))
         .on_press(Message::MainMenu);
-    start =
-        start.push(tooltip(menu, tip(app, t.t("menu.button").to_owned()), tooltip::Position::Top));
+    start = start.push(
+        tooltip(menu, tip(app, t.t("menu.button").to_owned()), tooltip::Position::Top)
+            .gap(panel::TIP_GAP),
+    );
     if app.tree.is_some() {
         let color = if app.sidebar { c.accent } else { c.muted };
         let toggle = button(explorer::icon(crate::icons::get("sidebar"), color))
-            .padding(2)
+            .padding([4, 6])
             .style(style::quiet(c))
             .on_press(Message::ToggleSidebar);
         let name = format!("{}   {}", t.t("sidebar.toggle"), crate::keys::label("Ctrl+B"));
-        start = start.push(tooltip(toggle, tip(app, name), tooltip::Position::Top));
+        start =
+            start.push(tooltip(toggle, tip(app, name), tooltip::Position::Top).gap(panel::TIP_GAP));
     }
     let left = start.push(left);
 
     container(row![left, space::horizontal(), right].align_y(Alignment::Center))
         .padding(Padding { top: 0.0, bottom: 0.0, left: 8.0, right: 14.0 })
-        .height(Length::Fixed(26.0))
+        .height(Length::Fixed(STATUS_HEIGHT))
         .align_y(Alignment::Center)
         .width(Fill)
         .style(style::surface(c.panel, c.muted))

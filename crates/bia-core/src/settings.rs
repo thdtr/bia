@@ -36,9 +36,11 @@ pub struct Settings {
     pub hidden: Vec<String>,
     /// Typing `(`, `[`, `{` or a quote also types the closing half.
     pub auto_close: bool,
-    /// Long lines wrap at the window's edge (`true` or `"edge"`), at the
-    /// first ruler (`"ruler"`), or not at all (`false` or `"off"`).
+    /// Long lines wrap at the window's edge (`true` or `"edge"`), at
+    /// `wrap_column` (`"column"`), or not at all (`false` or `"off"`).
     pub soft_wrap: SoftWrap,
+    /// Where lines wrap with `"soft_wrap": "column"`, in characters.
+    pub wrap_column: usize,
     /// Columns where a thin line is drawn, to see how long lines get.
     pub rulers: Vec<usize>,
     /// Thin lines down each level of indentation.
@@ -91,6 +93,7 @@ impl Default for Settings {
                 .to_vec(),
             auto_close: true,
             soft_wrap: SoftWrap::Off,
+            wrap_column: 80,
             rulers: Vec::new(),
             indent_guides: true,
             show_whitespace: Whitespace::Selection,
@@ -117,7 +120,8 @@ pub enum SoftWrap {
     #[default]
     Off,
     Edge,
-    Ruler,
+    /// At `wrap_column`, or the edge if that comes first.
+    Column,
 }
 
 /// `true` and `false` from older settings files still mean edge and off.
@@ -134,7 +138,7 @@ impl<'de> Deserialize<'de> for SoftWrap {
             Either::Flag(false) => SoftWrap::Off,
             Either::Name(name) => match name.as_str() {
                 "edge" | "on" => SoftWrap::Edge,
-                "ruler" => SoftWrap::Ruler,
+                "column" => SoftWrap::Column,
                 _ => SoftWrap::Off,
             },
         })
@@ -173,6 +177,8 @@ pub struct LanguageSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub soft_wrap: Option<SoftWrap>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub wrap_column: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub format_on_save: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trim_trailing_whitespace_on_save: Option<bool>,
@@ -200,6 +206,7 @@ pub struct ForLanguage {
     pub insert_spaces: bool,
     pub rulers: Vec<usize>,
     pub soft_wrap: SoftWrap,
+    pub wrap_column: usize,
     pub format_on_save: bool,
     pub trim_trailing_whitespace_on_save: bool,
     pub ensure_final_newline_on_save: bool,
@@ -207,7 +214,7 @@ pub struct ForLanguage {
 
 /// Every key BIA reads, to point out the ones it doesn't know (a typo,
 /// usually).
-const KEYS: [&str; 27] = [
+const KEYS: [&str; 28] = [
     "font_family",
     "font_size",
     "ui_font_family",
@@ -219,6 +226,7 @@ const KEYS: [&str; 27] = [
     "hidden",
     "auto_close",
     "soft_wrap",
+    "wrap_column",
     "rulers",
     "indent_guides",
     "show_whitespace",
@@ -279,6 +287,7 @@ impl Settings {
             insert_spaces: o.insert_spaces.unwrap_or(self.insert_spaces),
             rulers: o.rulers.unwrap_or_else(|| self.rulers.clone()),
             soft_wrap: o.soft_wrap.unwrap_or(self.soft_wrap),
+            wrap_column: o.wrap_column.unwrap_or(self.wrap_column).clamp(20, 1000),
             format_on_save: o.format_on_save.unwrap_or(self.format_on_save),
             trim_trailing_whitespace_on_save: o
                 .trim_trailing_whitespace_on_save
@@ -336,6 +345,7 @@ impl Settings {
         self.ui_font_size = clamp(self.ui_font_size, 8.0, 32.0, d.ui_font_size);
         self.line_height = clamp(self.line_height, 1.0, 3.0, d.line_height);
         self.tab_size = self.tab_size.clamp(1, 8);
+        self.wrap_column = self.wrap_column.clamp(20, 1000);
         self.rulers.retain(|&c| (1..=1000).contains(&c));
         self.rulers.sort_unstable();
         if let Some(size) = &mut self.terminal.font_size {
@@ -387,8 +397,19 @@ mod tests {
             |v: &str| Settings::from_json(&format!("{{\"soft_wrap\": {v}}}")).unwrap().soft_wrap;
         assert_eq!(wrap("true"), SoftWrap::Edge);
         assert_eq!(wrap("false"), SoftWrap::Off);
-        assert_eq!(wrap("\"ruler\""), SoftWrap::Ruler);
+        assert_eq!(wrap("\"column\""), SoftWrap::Column);
         assert_eq!(wrap("\"edge\""), SoftWrap::Edge);
+    }
+
+    #[test]
+    fn wrap_column_per_language() {
+        let s = Settings::from_json(
+            r#"{ "soft_wrap": "column", "wrap_column": 100, "languages": { "Markdown": { "wrap_column": 72 } } }"#,
+        )
+        .unwrap();
+        assert_eq!(s.for_language("Rust").wrap_column, 100);
+        assert_eq!(s.for_language("Markdown").wrap_column, 72);
+        assert_eq!(Settings::from_json(r#"{ "wrap_column": 3 }"#).unwrap().wrap_column, 20);
     }
 
     #[test]

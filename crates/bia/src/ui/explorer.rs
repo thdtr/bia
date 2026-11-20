@@ -68,28 +68,31 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
             "new-file",
             "tree.new_file",
             None,
-            tree_action(TreeAction::NewFile(target.clone()))
+            tree_action(TreeAction::NewFile(target.clone())),
+            true,
         ),
         icon_button(
             app,
             "new-folder",
             "tree.new_folder",
             None,
-            tree_action(TreeAction::NewFolder(target))
+            tree_action(TreeAction::NewFolder(target)),
+            true,
         ),
         icon_button(
             app,
             "collapse",
             "tree.collapse_all",
             None,
-            tree_action(TreeAction::CollapseAll)
+            tree_action(TreeAction::CollapseAll),
+            true,
         ),
-        icon_button(app, "sidebar", "sidebar.hide", Some("Ctrl+B"), Message::ToggleSidebar),
+        icon_button(app, "sidebar", "sidebar.hide", Some("Ctrl+B"), Message::ToggleSidebar, true),
     ]
     .spacing(2)
     .align_y(Alignment::Center)
-    .padding(Padding { top: 0.0, bottom: 0.0, left: 14.0, right: 8.0 })
-    .height(Length::Fixed(38.0));
+    .padding(Padding { top: 0.0, bottom: 0.0, left: 14.0, right: 6.0 })
+    .height(Length::Fixed(40.0));
 
     let height = row_height(app);
     let rows = tree.rows();

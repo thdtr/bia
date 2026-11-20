@@ -1638,12 +1638,11 @@ impl Bia {
     pub fn wrap_for(&self, language: &str) -> crate::code_view::Wrap {
         use crate::code_view::Wrap;
         use bia_core::settings::SoftWrap;
-        match self.settings.for_language(language).soft_wrap {
+        let own = self.settings.for_language(language);
+        match own.soft_wrap {
             SoftWrap::Off => Wrap::Off,
             SoftWrap::Edge => Wrap::Edge,
-            SoftWrap::Ruler => {
-                self.rulers_for(language).first().map_or(Wrap::Edge, |&c| Wrap::Column(c))
-            }
+            SoftWrap::Column => Wrap::Column(own.wrap_column),
         }
     }
 
@@ -1927,7 +1926,7 @@ impl Bia {
             })
             .collect();
         // It opens above the button, at the left of the status bar.
-        let at = iced::Point::new(8.0, self.window.height - 26.0);
+        let at = iced::Point::new(8.0, self.window.height - ui::STATUS_HEIGHT);
         self.menu = Some(ui::menu::Menu { at, items });
     }
 

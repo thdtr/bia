@@ -81,7 +81,7 @@ impl Command {
     ];
 
     /// What the menu button shows, `None` standing for a separator.
-    pub const MENU: [Option<Command>; 22] = [
+    pub const MENU: [Option<Command>; 23] = [
         Some(Command::NewFile),
         Some(Command::NewWindow),
         Some(Command::OpenFile),
@@ -100,6 +100,7 @@ impl Command {
         Some(Command::Terminal),
         None,
         Some(Command::Settings),
+        Some(Command::DefaultSettings),
         Some(Command::Shortcuts),
         Some(Command::About),
         None,

@@ -151,8 +151,8 @@ and Fira Code, but any installed font works.
 `theme` is `noite`, `dia` or one of yours. `language` is `auto`, `en` or `pt-BR`.
 `hidden` lists names the file tree skips.
 `auto_close` types the closing bracket or quote for you.
-`soft_wrap` wraps long lines at the edge of the window (`"edge"`) or at the first ruler
-(`"ruler"`). There's more, like rulers, visible spaces, saving on its own, trimming
+`soft_wrap` wraps long lines at the edge of the window (`"edge"`) or at `wrap_column`
+characters (`"column"`). There's more, like rulers, visible spaces, saving on its own, trimming
 spaces on save and settings per language. See the
 [settings reference](site/content/docs/settings.md). BIA also follows a project's
 `.editorconfig`.

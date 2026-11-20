@@ -44,7 +44,8 @@ If `settings.json` does not exist, BIA creates it with the default values.
   "language": "auto",
   "hidden": [".git", "node_modules", "target"],
   "auto_close": true,
-  "soft_wrap": "off",
+  "soft_wrap": "column",
+  "wrap_column": 100,
   "rulers": [100],
   "show_whitespace": "selection",
   "trim_trailing_whitespace_on_save": true,
@@ -76,7 +77,8 @@ A setting that is omitted keeps its default value.
 | `language` | `"auto"` | Interface language: `auto` (follows the system), `en` or `pt-BR`. |
 | `hidden` | see below | Names that the file tree does not show. |
 | `auto_close` | `true` | Typing `(`, `[`, `{` or a quote also types the closing half. |
-| `soft_wrap` | `"off"` | Where long lines wrap instead of scrolling sideways. `"edge"` wraps at the edge of the editor, `"ruler"` at the first ruler (or the edge, if that comes first), and `"off"` doesn't wrap. `true` and `false` still work. |
+| `soft_wrap` | `"off"` | Where long lines wrap instead of scrolling sideways. `"edge"` wraps at the edge of the editor, `"column"` at `wrap_column` (or the edge, if that comes first), and `"off"` doesn't wrap. `true` and `false` still work. |
+| `wrap_column` | `80` | The line length where `"soft_wrap": "column"` wraps, from 20 to 1000 characters. Only the view wraps: the file keeps its long lines. |
 | `rulers` | `[]` | Columns with a thin line down the editor, such as `[80, 120]`. |
 | `indent_guides` | `true` | Thin lines down each level of indentation. |
 | `show_whitespace` | `"selection"` | Where spaces show as dots and tabs as dashes. `"none"`, `"selection"` or `"all"`. |
@@ -100,7 +102,7 @@ Values outside the accepted range are adjusted to the nearest limit. Fira Sans a
 
 ## One language at a time
 
-`languages` changes some settings for the files of one language, and leaves the rest as they are. It takes `tab_size`, `insert_spaces`, `rulers`, `soft_wrap`, `format_on_save`, `trim_trailing_whitespace_on_save` and `ensure_final_newline_on_save`.
+`languages` changes some settings for the files of one language, and leaves the rest as they are. It takes `tab_size`, `insert_spaces`, `rulers`, `soft_wrap`, `wrap_column`, `format_on_save`, `trim_trailing_whitespace_on_save` and `ensure_final_newline_on_save`.
 
 ```json
 "languages": {

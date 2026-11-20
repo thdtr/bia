@@ -44,7 +44,8 @@ Se o `settings.json` não existir, o BIA o cria com os valores padrão.
   "language": "auto",
   "hidden": [".git", "node_modules", "target"],
   "auto_close": true,
-  "soft_wrap": "off",
+  "soft_wrap": "column",
+  "wrap_column": 100,
   "rulers": [100],
   "show_whitespace": "selection",
   "trim_trailing_whitespace_on_save": true,
@@ -76,7 +77,8 @@ Uma configuração omitida mantém o valor padrão.
 | `language` | `"auto"` | Idioma da interface: `auto` (segue o sistema), `en` ou `pt-BR`. |
 | `hidden` | veja abaixo | Nomes que a árvore de arquivos não exibe. |
 | `auto_close` | `true` | Digitar `(`, `[`, `{` ou aspas também digita o fechamento. |
-| `soft_wrap` | `"off"` | Onde as linhas longas quebram em vez de rolar para o lado. `"edge"` quebra na borda do editor, `"ruler"` na primeira régua (ou na borda, se ela vier antes), e `"off"` não quebra. `true` e `false` continuam valendo. |
+| `soft_wrap` | `"off"` | Onde as linhas longas quebram em vez de rolar para o lado. `"edge"` quebra na borda do editor, `"column"` no `wrap_column` (ou na borda, se ela vier antes), e `"off"` não quebra. `true` e `false` continuam valendo. |
+| `wrap_column` | `80` | O tamanho de linha em que `"soft_wrap": "column"` quebra, de 20 a 1000 caracteres. Só a exibição quebra, e o arquivo continua com as linhas longas. |
 | `rulers` | `[]` | Colunas com uma linha fina ao longo do editor, como `[80, 120]`. |
 | `indent_guides` | `true` | Linhas finas em cada nível de indentação. |
 | `show_whitespace` | `"selection"` | Onde os espaços aparecem como pontos e os tabs como traços. `"none"`, `"selection"` ou `"all"`. |
@@ -100,7 +102,7 @@ Valores fora do intervalo aceito são ajustados para o limite mais próximo. As 
 
 ## Uma linguagem por vez
 
-`languages` muda algumas configurações para os arquivos de uma linguagem e deixa o resto como está. Aceita `tab_size`, `insert_spaces`, `rulers`, `soft_wrap`, `format_on_save`, `trim_trailing_whitespace_on_save` e `ensure_final_newline_on_save`.
+`languages` muda algumas configurações para os arquivos de uma linguagem e deixa o resto como está. Aceita `tab_size`, `insert_spaces`, `rulers`, `soft_wrap`, `wrap_column`, `format_on_save`, `trim_trailing_whitespace_on_save` e `ensure_final_newline_on_save`.
 
 ```json
 "languages": {

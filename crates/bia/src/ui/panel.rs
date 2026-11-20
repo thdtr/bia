@@ -20,7 +20,7 @@ use iced::{Alignment, Element, Fill, Length, Padding, mouse};
 /// The strip you grab to resize. It is wider than the line it draws, and
 /// painted like the panel it belongs to, so it's easy to hit.
 const GRIP: f32 = 4.0;
-const HEADER: f32 = 30.0;
+const HEADER: f32 = 34.0;
 
 pub fn terminal(app: &Bia) -> Option<Element<'_, Message>> {
     let c = app.look.colors;
@@ -41,9 +41,16 @@ pub fn terminal(app: &Bia) -> Option<Element<'_, Message>> {
     let tabs = app.terminals.list.iter().map(|t| tab(app, t, t.id == active.id));
     let header = row![
         Row::with_children(tabs).spacing(2).align_y(Alignment::Center),
-        icon_button(app, "plus", "terminal.new", Some("Ctrl+Shift+`"), Message::NewTerminal),
+        icon_button(app, "plus", "terminal.new", Some("Ctrl+Shift+`"), Message::NewTerminal, false),
         space::horizontal(),
-        icon_button(app, "chevron-down", "terminal.hide", Some("Ctrl+`"), Message::ToggleTerminal),
+        icon_button(
+            app,
+            "chevron-down",
+            "terminal.hide",
+            Some("Ctrl+`"),
+            Message::ToggleTerminal,
+            false
+        ),
     ]
     .spacing(4)
     .align_y(Alignment::Center)
@@ -73,7 +80,7 @@ fn tab<'a>(app: &'a Bia, terminal: &'a Terminal, active: bool) -> Element<'a, Me
     let title: String = terminal.name().chars().take(28).collect();
     let name = hint(app, title).color(if active { c.text } else { c.muted });
     let close = button(icon(icons::get("close"), c.muted))
-        .padding(1)
+        .padding(4)
         .style(style::quiet(c))
         .on_press(Message::CloseTerminal(terminal.id));
     button(row![name, close].spacing(6).align_y(Alignment::Center))
@@ -83,21 +90,33 @@ fn tab<'a>(app: &'a Bia, terminal: &'a Terminal, active: bool) -> Element<'a, Me
         .into()
 }
 
-/// A small icon button with its name, and its keys if it has some, on hover.
+/// Space around a 16 px icon, so the button is 28 px wide and tall: a
+/// comfortable target for a mouse, as desktop guidelines ask (24 px at
+/// the least).
+pub(super) const ICON_PAD: f32 = 6.0;
+
+/// Room between a button and its tooltip, so the tooltip never covers it.
+pub(super) const TIP_GAP: f32 = 6.0;
+
+/// An icon button with its name, and its keys if it has some, on hover.
+/// `below` puts the tooltip under the button, for buttons at the top of
+/// the window, where there's no room above.
 pub(super) fn icon_button<'a>(
     app: &'a Bia,
     name: &str,
     label: &str,
     keys: Option<&str>,
     message: Message,
+    below: bool,
 ) -> Element<'a, Message> {
     let c = app.look.colors;
-    let face = button(icon(icons::get(name), c.muted)).padding(3).style(style::quiet(c));
+    let face = button(icon(icons::get(name), c.muted)).padding(ICON_PAD).style(style::quiet(c));
     let mut text = app.look.i18n.t(label).to_owned();
     if let Some(keys) = keys {
         text = format!("{text}   {}", keys::label(keys));
     }
-    tooltip(face.on_press(message), tip(app, text), tooltip::Position::Top).into()
+    let side = if below { tooltip::Position::Bottom } else { tooltip::Position::Top };
+    tooltip(face.on_press(message), tip(app, text), side).gap(TIP_GAP).into()
 }
 
 /// The divider between the sidebar and the editor.

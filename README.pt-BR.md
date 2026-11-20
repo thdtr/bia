@@ -152,8 +152,8 @@ No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`. `Ctrl+Space` e ``Ctrl+`
 fontes Fira Sans e Fira Code, mas aceita qualquer fonte instalada. `theme` pode ser
 `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou `pt-BR`. `hidden` lista os nomes que a árvore não mostra.
 `auto_close` fecha parênteses, colchetes, chaves e aspas por você.
-`soft_wrap` quebra as linhas longas na borda da janela (`"edge"`) ou na primeira régua
-(`"ruler"`). Tem mais, como réguas, espaços visíveis, salvar sozinho, tirar espaços ao
+`soft_wrap` quebra as linhas longas na borda da janela (`"edge"`) ou com `wrap_column`
+caracteres (`"column"`). Tem mais, como réguas, espaços visíveis, salvar sozinho, tirar espaços ao
 salvar e configurações por linguagem. Veja a
 [referência de configurações](site/content/docs/settings.pt-br.md). O BIA também segue
 o `.editorconfig` do projeto.

@@ -26,7 +26,7 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     ]
     .align_y(Alignment::Center)
     .padding(Padding { top: 0.0, bottom: 0.0, left: 14.0, right: 8.0 })
-    .height(Length::Fixed(38.0));
+    .height(Length::Fixed(40.0));
 
     let input = text_input(t.t("search.placeholder"), &search.query)
         .id(SEARCH_ID)

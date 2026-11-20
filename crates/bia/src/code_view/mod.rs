@@ -1156,7 +1156,12 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                 let unit =
                     if self.editor.indent.tabs { tab } else { self.editor.indent.width }.max(1);
                 let mut indent = 0;
-                for ((row, ..), text) in rows.iter().zip(&texts) {
+                for ((row, r, ..), text) in rows.iter().zip(&texts) {
+                    // The rest of a wrapped line starts at the left edge, so
+                    // guides there would cross its text.
+                    if r.start > 0 {
+                        continue;
+                    }
                     if !text.trim().is_empty() {
                         let leading = text.len() - text.trim_start().len();
                         indent = bia_core::editor::display_column(text, leading, tab);
