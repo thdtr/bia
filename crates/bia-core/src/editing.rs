@@ -278,9 +278,88 @@ pub fn should_close(open: char, before: Option<char>, after: Option<char>, synta
     !(open == '\'' && skip_single || open == '"' && skip_double)
 }
 
+/// Words in comments that mark work left to do, highlighted so they stand
+/// out from the comment around them.
+pub const MARKERS: [&str; 4] = ["TODO", "FIXME", "HACK", "XXX"];
+
+/// Where `line` has a [`MARKERS`] word inside a comment, as byte ranges. A
+/// comment starts at the line token, at the block opener, or at a leading
+/// `*` (the middle of a `/* … */` block); a marker before that is code.
+pub fn markers(line: &str, comments: Option<Comments>) -> Vec<std::ops::Range<usize>> {
+    let Some(comments) = comments else { return Vec::new() };
+    let trimmed = line.trim_start();
+    let starts = [comments.line, comments.block.map(|b| b.0)]
+        .into_iter()
+        .flatten()
+        .filter_map(|token| line.find(token))
+        .chain(trimmed.starts_with('*').then_some(line.len() - trimmed.len()))
+        .min();
+    let Some(start) = starts else { return Vec::new() };
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let mut found = Vec::new();
+    for marker in MARKERS {
+        for (i, _) in line[start..].match_indices(marker) {
+            let at = start + i;
+            let before = line[..at].chars().next_back();
+            let after = line[at + marker.len()..].chars().next();
+            if !before.is_some_and(word) && !after.is_some_and(word) {
+                found.push(at..at + marker.len());
+            }
+        }
+    }
+    found.sort_by_key(|r| r.start);
+    found
+}
+
+/// The spaces and tabs at the end of each line of `text`, as byte
+/// ranges, for "trim trailing whitespace on save". Line breaks stay.
+pub fn trailing_whitespace(text: &str) -> Vec<std::ops::Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\n', '\r']);
+        let kept = body.trim_end_matches([' ', '\t']).len();
+        if kept < body.len() {
+            ranges.push(start + kept..start + body.len());
+        }
+        start += line.len();
+    }
+    ranges
+}
+
+/// Whether `text` needs a line break added at its end. An empty file
+/// doesn't, and neither does one that already ends with one or more.
+pub fn needs_final_newline(text: &str) -> bool {
+    !text.is_empty() && !text.ends_with('\n')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn save_cleanups() {
+        assert_eq!(trailing_whitespace("a  \nb\t\r\nc\n  "), [1..3, 5..6, 10..12]);
+        assert!(trailing_whitespace("clean\n").is_empty());
+        assert!(needs_final_newline("x"));
+        assert!(!needs_final_newline("x\n\n\n"));
+        assert!(!needs_final_newline(""));
+    }
+
+    #[test]
+    fn markers_only_in_comments() {
+        let rust = comments("Rust");
+        let one = |line: &str, c| {
+            markers(line, c).into_iter().map(|r| (r.start, r.end)).collect::<Vec<_>>()
+        };
+        assert_eq!(one("let x = 1; // TODO: less", rust), [(14, 18)]);
+        assert_eq!(markers("// FIXME and XXX", rust), [3..8, 13..16]);
+        assert_eq!(one(" * HACK", rust), [(3, 7)]);
+        assert!(markers("let TODO = 1;", rust).is_empty());
+        assert!(markers("// TODOS", rust).is_empty());
+        assert_eq!(one("# TODO", comments("Python")), [(2, 6)]);
+        assert!(markers("// TODO", None).is_empty());
+    }
 
     fn apply(lines: &[&str], edits: &[LineEdit]) -> Vec<String> {
         lines.iter().enumerate().map(|(i, l)| apply_line(l, i, edits)).collect()

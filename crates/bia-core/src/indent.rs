@@ -28,13 +28,13 @@ impl Indent {
     }
 
     /// The indentation for `path`: detected from `text`, else the language's
-    /// convention, else `tab_size` spaces.
-    pub fn for_file(path: &Path, text: &str, tab_size: usize) -> Self {
+    /// convention, else `tab_size` spaces (or tabs, with `tabs`).
+    pub fn for_file(path: &Path, text: &str, tab_size: usize, tabs: bool) -> Self {
         let tab_size = tab_size.clamp(1, 8);
         match detect(text) {
             Some(Detected::Tabs) => Self::tabs(tab_size),
             Some(Detected::Spaces(n)) => Self::spaces(n),
-            None if wants_tabs(path) => Self::tabs(tab_size),
+            None if tabs || wants_tabs(path) => Self::tabs(tab_size),
             None => Self::spaces(tab_size),
         }
     }
@@ -194,11 +194,12 @@ mod tests {
 
     #[test]
     fn falls_back_to_language_then_settings() {
-        assert_eq!(Indent::for_file(Path::new("Makefile"), "", 4), Indent::tabs(4));
-        assert_eq!(Indent::for_file(Path::new("main.go"), "", 2), Indent::tabs(2));
-        assert_eq!(Indent::for_file(Path::new("a.py"), "", 4), Indent::spaces(4));
-        assert_eq!(Indent::for_file(Path::new("a.py"), "x\n  y\n", 4), Indent::spaces(2));
-        assert_eq!(Indent::for_file(Path::new("a.go"), "x\n    y\n", 4), Indent::spaces(4));
+        assert_eq!(Indent::for_file(Path::new("Makefile"), "", 4, false), Indent::tabs(4));
+        assert_eq!(Indent::for_file(Path::new("main.go"), "", 2, false), Indent::tabs(2));
+        assert_eq!(Indent::for_file(Path::new("a.py"), "", 4, false), Indent::spaces(4));
+        assert_eq!(Indent::for_file(Path::new("a.py"), "x\n  y\n", 4, false), Indent::spaces(2));
+        assert_eq!(Indent::for_file(Path::new("a.go"), "x\n    y\n", 4, false), Indent::spaces(4));
+        assert_eq!(Indent::for_file(Path::new("a.py"), "", 4, true), Indent::tabs(4));
     }
 
     #[test]

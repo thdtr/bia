@@ -1,4 +1,4 @@
-//! File operations behind the explorer: create, rename, copy, move, and
+//! File operations behind the explorer. Create, rename, copy, move, and
 //! keeping paths in sync afterwards. None of them ever replaces something
 //! that's already there. Deleting is the app's job, because it goes through
 //! the OS trash.
@@ -76,7 +76,7 @@ pub fn create_dir(dir: &Path, name: &str) -> Result<PathBuf, FsError> {
     Ok(path)
 }
 
-/// A name for a copy of `name` that `dir` doesn't have yet: the name
+/// A name for a copy of `name` that `dir` doesn't have yet. It's the name
 /// itself if it's free, then `notes copy.md`, `notes copy 2.md`…
 pub fn free_name(dir: &Path, name: &str) -> String {
     if !exists(&dir.join(name)) {

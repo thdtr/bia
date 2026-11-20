@@ -1,4 +1,4 @@
-//! The box at the top of the window: open a file by name (Ctrl+P), go to
+//! The box at the top of the window. It opens a file by name (Ctrl+P), goes to
 //! a line (Ctrl+G), run a command (Ctrl+Shift+P) or open a recent folder.
 //! Clicking outside it, or Esc, closes it.
 
@@ -24,6 +24,7 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
         PaletteMode::Rename { .. } => t.t("palette.rename"),
         PaletteMode::Commands { .. } => t.t("palette.commands"),
         PaletteMode::Recent { .. } => t.t("palette.recent"),
+        PaletteMode::History { .. } => t.t("palette.history"),
     };
     let input = text_input(placeholder, &palette.query)
         .id(PALETTE_ID)
@@ -93,6 +94,21 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
                     .height(Length::Shrink)
                     .style(style::scroll(c))
                     .into()
+            }
+        }
+        PaletteMode::History { versions, .. } => {
+            if versions.is_empty() {
+                note_row(app, t.t("palette.no_history").to_owned())
+            } else {
+                let rows = versions.iter().enumerate().take(12).map(|(i, version)| {
+                    button(label(app, app.ago(version.saved)))
+                        .width(Fill)
+                        .padding([4, 8])
+                        .style(style::row(c, i == palette.selected))
+                        .on_press(Message::PalettePick(i))
+                        .into()
+                });
+                Column::with_children(rows).into()
             }
         }
         PaletteMode::Recent { results } => {

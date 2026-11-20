@@ -43,6 +43,21 @@ Notable changes to BIA are listed here. The format is based on
 - BIA remembers the window's size and place, and whether it was maximized.
 - Dropping a file or folder on the window opens it.
 - `Ctrl+Q` quits.
+- Local history. Each save keeps the saved text, the last 30 versions of each file, and
+  "Local history" brings one back as an edit that `Ctrl+Z` undoes.
+- `Alt+←` and `Alt+→` go back and forward between the places you jumped from and to.
+  On a Mac, `⌃-` and `⌃⇧-`.
+- The other places of the word under the cursor get a soft mark, and `TODO`, `FIXME`,
+  `HACK` and `XXX` stand out in comments.
+- Find in files takes the files to include and to leave out.
+- BIA follows the project's `.editorconfig`.
+- New settings `rulers`, `indent_guides`, `show_whitespace`, `line_numbers`,
+  `relative_line_numbers`, `cursor_blink`, `insert_spaces`, `autosave`,
+  `format_on_save`, `trim_trailing_whitespace_on_save`, `ensure_final_newline_on_save`,
+  `restore_on_startup`, `file_types`, `terminal`, and `languages` for settings per
+  language.
+- A key in settings.json that BIA doesn't know is pointed out, and "Default settings"
+  shows every setting with its default value.
 
 ### Changed
 
@@ -51,6 +66,7 @@ Notable changes to BIA are listed here. The format is based on
   until you save it, even if you quit. New files and folders inside a folder are made
   with the buttons at the top of the tree or its right-click menu, and `Ctrl+Shift+N`
   now opens a new window.
+- `soft_wrap` takes `"off"`, `"edge"` or `"ruler"`. `true` and `false` still work.
 - Names are typed in the tree itself, instead of a strip at the bottom of the sidebar.
   When renaming, the name comes selected without its extension. Moving to the trash
   asks in a dialog.

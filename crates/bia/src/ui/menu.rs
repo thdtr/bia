@@ -1,10 +1,10 @@
-//! Context menus: the list that opens where you right-click.
+//! Context menus, the lists that open where you right-click.
 //!
 //! [`on_right_click`] wraps an element and reports where in the window the
 //! right click happened, which `mouse_area` doesn't say. It lets the click
 //! go on, so a row inside a list can say which row it was, and the list
 //! around it (outside any scrolling, where positions are the window's) can
-//! open the menu there. Messages arrive in that order: the row's first.
+//! open the menu there. Messages arrive in that order, the row's first.
 //!
 //! The app keeps the open [`Menu`] and [`view`] draws it over everything
 //! else, next to the mouse, and closes it on any click outside.
@@ -85,7 +85,7 @@ pub fn view<'a>(app: &'a Bia, menu: &'a Menu) -> Element<'a, Message> {
     }
     let card = container(list).style(style::card(c));
 
-    // Kept inside the window: a menu near the right or bottom edge opens
+    // Kept inside the window. A menu near the right or bottom edge opens
     // to the left of the mouse, or above it.
     let separators = menu.items.iter().filter(|i| matches!(i, Item::Separator)).count();
     let height =

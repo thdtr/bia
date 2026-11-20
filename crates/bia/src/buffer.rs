@@ -30,6 +30,8 @@ pub struct Buffer {
     pub modified: Option<SystemTime>,
     /// Parsed Markdown, kept only while the preview is open.
     pub markdown: Option<markdown::Content>,
+    /// What the project's `.editorconfig` files say about this file.
+    pub editorconfig: bia_core::editorconfig::Props,
     markdown_revision: u64,
     pub highlights: RefCell<Highlights>,
     /// The rows the text takes on screen, kept up to date by the view
@@ -181,6 +183,7 @@ impl Buffer {
             bom: doc.bom,
             modified: doc.modified,
             markdown: None,
+            editorconfig: Default::default(),
             markdown_revision: 0,
             highlights: RefCell::default(),
             center: 0,
@@ -215,10 +218,12 @@ impl Buffer {
         let (syntax, indent) = (old.syntax.clone(), old.indent);
         let (auto_close, tab_width) = (old.auto_close, old.tab_width);
         let preview = self.markdown.is_some();
+        let editorconfig = self.editorconfig;
         let mut git = std::mem::take(&mut self.git);
         git.reset();
         *self = Self::new(doc, syntax, indent);
         self.git = git;
+        self.editorconfig = editorconfig;
         self.editor.auto_close = auto_close;
         self.editor.tab_width = tab_width;
         if preview {

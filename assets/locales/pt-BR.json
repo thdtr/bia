@@ -174,5 +174,19 @@
   "tabs.close_right": "Fechar as da direita",
   "tabs.close_saved": "Fechar as salvas",
   "tabs.close_all": "Fechar todas",
-  "tabs.reveal": "Mostrar na árvore"
+  "tabs.reveal": "Mostrar na árvore",
+  "cmd.back": "Voltar",
+  "cmd.forward": "Avançar",
+  "cmd.local_history": "Histórico local",
+  "cmd.default_settings": "Configurações padrão",
+  "palette.history": "Escolha uma versão para trazer de volta",
+  "palette.no_history": "Este arquivo ainda não tem versões salvas",
+  "history.now": "agora há pouco",
+  "history.minutes": "há {count} min",
+  "history.hours": "há {count} h",
+  "history.days": "há {count} dias",
+  "notice.restored": "Versão salva {when} restaurada. Ctrl+Z desfaz.",
+  "notice.unknown_key": "O BIA não conhece a chave \"{key}\" do settings.json",
+  "search.include": "Incluir, como src, *.rs",
+  "search.exclude": "Deixar de fora, como *.lock"
 }

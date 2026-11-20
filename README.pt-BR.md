@@ -58,6 +58,9 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Números de linha, abas, desfazer e refazer
 - Um menu, todos os comandos pelo nome (`Ctrl+Shift+P`) e uma janela Sobre
 - Arquivos novos guardados até você salvar, mesmo se sair
+- Histórico local, com as últimas 30 versões salvas de cada arquivo para trazer de volta
+- Réguas, guias de indentação, espaços visíveis e destaque de `TODO` nos comentários
+- Segue o `.editorconfig` do projeto
 - Buscar e substituir, com maiúsculas, palavra inteira e regex
 - Busca em todos os arquivos, pulando o que está no `.gitignore`
 - Abrir arquivo pelo nome, ir para uma linha
@@ -90,6 +93,7 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `Ctrl+W` | Fechar aba |
 | `Ctrl+P` | Abrir arquivo pelo nome |
 | `Ctrl+G` | Ir para linha |
+| `Alt+←` / `Alt+→` | Voltar / avançar |
 | `Ctrl+F` / `F3` | Buscar / próximo resultado |
 | `Ctrl+H` | Substituir |
 | `Ctrl+Shift+F` | Buscar nos arquivos |
@@ -148,7 +152,11 @@ No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`. `Ctrl+Space` e ``Ctrl+`
 fontes Fira Sans e Fira Code, mas aceita qualquer fonte instalada. `theme` pode ser
 `noite`, `dia` ou um tema seu. `language` pode ser `auto`, `en` ou `pt-BR`. `hidden` lista os nomes que a árvore não mostra.
 `auto_close` fecha parênteses, colchetes, chaves e aspas por você.
-`soft_wrap` quebra as linhas longas na borda da janela.
+`soft_wrap` quebra as linhas longas na borda da janela (`"edge"`) ou na primeira régua
+(`"ruler"`). Tem mais, como réguas, espaços visíveis, salvar sozinho, tirar espaços ao
+salvar e configurações por linguagem. Veja a
+[referência de configurações](site/content/docs/settings.pt-br.md). O BIA também segue
+o `.editorconfig` do projeto.
 
 Para usar um servidor de linguagem, informe o programa de cada linguagem, com o nome
 que aparece na barra de status. O BIA não inicia nenhum sozinho:

@@ -1,4 +1,4 @@
-//! Two cards over the window: "About BIA", and the list of keyboard
+//! Two cards over the window, "About BIA" and the list of keyboard
 //! shortcuts. A click outside them, or Esc, closes them.
 
 use super::{hint, label, logo, style};

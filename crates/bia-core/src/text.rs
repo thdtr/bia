@@ -77,9 +77,9 @@ pub fn location_at(line: &[char], at: usize) -> Option<(std::ops::Range<usize>, 
     Some((start..end, location))
 }
 
-/// The files a clipboard names, one per line: `file://` addresses, as file
-/// managers copy them, or absolute paths. Lines that are neither, like
-/// GNOME's `copy` header, are skipped.
+/// The files a clipboard names, one per line, either as `file://`
+/// addresses, the way file managers copy them, or as absolute paths. Lines
+/// that are neither, like GNOME's `copy` header, are skipped.
 pub fn clipboard_paths(text: &str) -> Vec<std::path::PathBuf> {
     text.lines()
         .map(str::trim)
@@ -132,9 +132,133 @@ pub fn file_uri(path: &std::path::Path) -> String {
     uri
 }
 
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// The word of `line` that byte `at` touches (a cursor right after a word
+/// counts), if any.
+pub fn word_at(line: &str, at: usize) -> Option<std::ops::Range<usize>> {
+    let mut at = at.min(line.len());
+    while !line.is_char_boundary(at) {
+        at -= 1;
+    }
+    let start = line[..at]
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| is_word(*c))
+        .last()
+        .map_or(at, |(i, _)| i);
+    let end =
+        line[at..].char_indices().find(|(_, c)| !is_word(*c)).map_or(line.len(), |(i, _)| at + i);
+    (start < end).then_some(start..end)
+}
+
+/// Every place `word` appears in `line` as a whole word.
+pub fn word_places(line: &str, word: &str) -> Vec<std::ops::Range<usize>> {
+    if word.is_empty() {
+        return Vec::new();
+    }
+    line.match_indices(word)
+        .filter(|(i, _)| {
+            let before = line[..*i].chars().next_back();
+            let after = line[i + word.len()..].chars().next();
+            !before.is_some_and(is_word) && !after.is_some_and(is_word)
+        })
+        .map(|(i, _)| i..i + word.len())
+        .collect()
+}
+
+/// `*` (not across `/`), `**` (across), `?`, `{a,b}` and `[abc]`.
+pub fn glob(pattern: &str, text: &str) -> bool {
+    // `{a,b}` becomes one pattern per choice.
+    if let Some(open) = pattern.find('{')
+        && let Some(close) = pattern[open..].find('}').map(|i| open + i)
+    {
+        let (head, tail) = (&pattern[..open], &pattern[close + 1..]);
+        return pattern[open + 1..close]
+            .split(',')
+            .any(|choice| glob(&format!("{head}{choice}{tail}"), text));
+    }
+    matches(pattern.as_bytes(), text.as_bytes())
+}
+
+fn matches(p: &[u8], t: &[u8]) -> bool {
+    match p.first() {
+        None => t.is_empty(),
+        Some(b'*') if p.get(1) == Some(&b'*') => {
+            let rest = &p[2..];
+            (0..=t.len()).any(|i| matches(rest, &t[i..]))
+        }
+        Some(b'*') => {
+            let rest = &p[1..];
+            (0..=t.len())
+                .take_while(|&i| i == 0 || t[i - 1] != b'/')
+                .any(|i| matches(rest, &t[i..]))
+        }
+        Some(b'?') => !t.is_empty() && t[0] != b'/' && matches(&p[1..], &t[1..]),
+        Some(b'[') => {
+            let Some(close) = p.iter().position(|&c| c == b']') else {
+                return t.first() == Some(&b'[') && matches(&p[1..], &t[1..]);
+            };
+            let set = &p[1..close];
+            !t.is_empty() && set.contains(&t[0]) && matches(&p[close + 1..], &t[1..])
+        }
+        Some(&c) => t.first() == Some(&c) && matches(&p[1..], &t[1..]),
+    }
+}
+
+/// Which files a search looks in, as patterns separated by commas, like
+/// `src, *.rs` or `*.lock, tests`. A pattern matches a file's path from the
+/// open folder, its name, or any folder it's in. No `include` means every
+/// file; anything `exclude` matches is left out.
+pub fn path_filter(include: &str, exclude: &str) -> impl Fn(&str) -> bool + Send + 'static {
+    let split = |list: &str| -> Vec<String> {
+        list.split(',')
+            .map(|p| p.trim().trim_matches('/').to_owned())
+            .filter(|p| !p.is_empty())
+            .collect()
+    };
+    let (include, exclude) = (split(include), split(exclude));
+    move |relative: &str| {
+        let hits = |pattern: &String| {
+            glob(pattern, relative)
+                || relative.split('/').any(|part| glob(pattern, part))
+                || relative.starts_with(&format!("{pattern}/"))
+        };
+        (include.is_empty() || include.iter().any(hits)) && !exclude.iter().any(hits)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_filters() {
+        let rust_in_src = path_filter("src, *.toml", "*_test.rs");
+        assert!(rust_in_src("src/main.rs"));
+        assert!(rust_in_src("crates/x/src/lib.rs"));
+        assert!(rust_in_src("Cargo.toml"));
+        assert!(!rust_in_src("README.md"));
+        assert!(!rust_in_src("src/parse_test.rs"));
+        let everything_but_locks = path_filter("", "*.lock, target");
+        assert!(everything_but_locks("a/b.rs"));
+        assert!(!everything_but_locks("Cargo.lock"));
+        assert!(!everything_but_locks("target/debug/x"));
+        assert!(path_filter("docs/**.md", "")("docs/a/b.md"));
+    }
+
+    #[test]
+    fn words_and_their_places() {
+        let line = "let total = total_tax + total;";
+        assert_eq!(word_at(line, 6), Some(4..9));
+        assert_eq!(word_at(line, 9), Some(4..9));
+        assert_eq!(word_at(line, 10), None);
+        assert_eq!(word_places(line, "total"), [4..9, 24..29]);
+        assert!(word_places(line, "").is_empty());
+        assert_eq!(word_at("ação x", 2), Some(0..6));
+    }
 
     #[cfg(unix)]
     #[test]

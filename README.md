@@ -56,6 +56,9 @@ The install commands above don't trigger this warning.
 - Line numbers, tabs, undo and redo
 - A menu, every command by name (`Ctrl+Shift+P`), and an About window
 - New files kept until you save them, even if you quit
+- Local history, with the last 30 saved versions of each file to bring back
+- Rulers, indent guides, visible spaces, and `TODO` marks in comments
+- Follows the project's `.editorconfig`
 - Find and replace, with match case, whole word and regex
 - Find in files, skipping what `.gitignore` lists
 - Open a file by name, go to a line
@@ -88,6 +91,7 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `Ctrl+W` | Close tab |
 | `Ctrl+P` | Open file by name |
 | `Ctrl+G` | Go to line |
+| `Alt+←` / `Alt+→` | Back / forward |
 | `Ctrl+F` / `F3` | Find / next match |
 | `Ctrl+H` | Replace |
 | `Ctrl+Shift+F` | Find in files |
@@ -147,7 +151,11 @@ and Fira Code, but any installed font works.
 `theme` is `noite`, `dia` or one of yours. `language` is `auto`, `en` or `pt-BR`.
 `hidden` lists names the file tree skips.
 `auto_close` types the closing bracket or quote for you.
-`soft_wrap` wraps long lines at the edge of the window.
+`soft_wrap` wraps long lines at the edge of the window (`"edge"`) or at the first ruler
+(`"ruler"`). There's more, like rulers, visible spaces, saving on its own, trimming
+spaces on save and settings per language. See the
+[settings reference](site/content/docs/settings.md). BIA also follows a project's
+`.editorconfig`.
 
 To use a language server, name its program per language, as the status bar shows
 the language. BIA starts none on its own:

@@ -33,6 +33,7 @@ On macOS, most shortcuts use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd>. The tab
 | Indent selected lines | <kbd>Tab</kbd> | <kbd>Tab</kbd> |
 | Unindent selected lines | <kbd>Shift+Tab</kbd> | <kbd>⇧Tab</kbd> |
 | Go to line | <kbd>Ctrl+G</kbd> | <kbd>⌘G</kbd> |
+| Back / forward | <kbd>Alt+←</kbd> / <kbd>Alt+→</kbd> | <kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd> |
 | Comment or uncomment lines | <kbd>Ctrl+/</kbd> | <kbd>⌘/</kbd> |
 | Move lines up or down | <kbd>Alt+↑</kbd> / <kbd>Alt+↓</kbd> | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> |
 | Duplicate lines | <kbd>Shift+Alt+↑</kbd> / <kbd>Shift+Alt+↓</kbd> | <kbd>⇧⌥↑</kbd> / <kbd>⇧⌥↓</kbd> |

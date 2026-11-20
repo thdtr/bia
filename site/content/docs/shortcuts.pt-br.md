@@ -33,6 +33,7 @@ No macOS, a maioria dos atalhos usa <kbd>⌘</kbd> no lugar de <kbd>Ctrl</kbd>. 
 | Indentar as linhas selecionadas | <kbd>Tab</kbd> | <kbd>Tab</kbd> |
 | Remover a indentação das linhas selecionadas | <kbd>Shift+Tab</kbd> | <kbd>⇧Tab</kbd> |
 | Ir para a linha | <kbd>Ctrl+G</kbd> | <kbd>⌘G</kbd> |
+| Voltar / avançar | <kbd>Alt+←</kbd> / <kbd>Alt+→</kbd> | <kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd> |
 | Comentar ou descomentar linhas | <kbd>Ctrl+/</kbd> | <kbd>⌘/</kbd> |
 | Mover linhas para cima ou para baixo | <kbd>Alt+↑</kbd> / <kbd>Alt+↓</kbd> | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> |
 | Duplicar linhas | <kbd>Shift+Alt+↑</kbd> / <kbd>Shift+Alt+↓</kbd> | <kbd>⇧⌥↑</kbd> / <kbd>⇧⌥↓</kbd> |

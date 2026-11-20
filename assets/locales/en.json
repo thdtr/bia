@@ -174,5 +174,19 @@
   "tabs.close_right": "Close to the right",
   "tabs.close_saved": "Close saved",
   "tabs.close_all": "Close all",
-  "tabs.reveal": "Show in the tree"
+  "tabs.reveal": "Show in the tree",
+  "cmd.back": "Go back",
+  "cmd.forward": "Go forward",
+  "cmd.local_history": "Local history",
+  "cmd.default_settings": "Default settings",
+  "palette.history": "Pick a version to bring back",
+  "palette.no_history": "No saved versions of this file yet",
+  "history.now": "just now",
+  "history.minutes": "{count} min ago",
+  "history.hours": "{count} h ago",
+  "history.days": "{count} days ago",
+  "notice.restored": "Restored the version saved {when}. Ctrl+Z undoes it.",
+  "notice.unknown_key": "BIA doesn't know the key \"{key}\" in settings.json",
+  "search.include": "Include, like src, *.rs",
+  "search.exclude": "Leave out, like *.lock"
 }

@@ -1,4 +1,4 @@
-//! The terminal panel: shells on pseudo-terminals, each read and parsed by
+//! The terminal panel. Shells on pseudo-terminals, each read and parsed by
 //! `alacritty_terminal` on its own thread, and the bytes keys turn into.
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
@@ -97,19 +97,22 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    /// Starts the user's shell in `dir`.
+    /// Starts `shell` (a program and its arguments), or the user's login
+    /// shell, in `dir`.
     pub fn spawn(
         id: u64,
         dir: &Path,
         size: Size,
         events: UnboundedSender<(u64, TermEvent)>,
+        shell: Option<(String, Vec<String>)>,
     ) -> io::Result<Self> {
         let env = HashMap::from([
             ("TERM".to_owned(), "xterm-256color".to_owned()),
             ("COLORTERM".to_owned(), "truecolor".to_owned()),
         ]);
+        let title = shell.as_ref().map(|(program, _)| program.clone());
         let options = tty::Options {
-            shell: None,
+            shell: shell.map(|(program, args)| tty::Shell::new(program, args)),
             working_directory: Some(dir.to_path_buf()),
             drain_on_exit: false,
             env,
@@ -132,7 +135,11 @@ impl Terminal {
             term,
             sender,
             size,
-            title: shell_name(),
+            title: title
+                .as_deref()
+                .map(Path::new)
+                .and_then(Path::file_stem)
+                .map_or_else(shell_name, |s| s.to_string_lossy().into_owned()),
             program: None,
             looked_at: std::time::Instant::now() - LOOK_EVERY,
             stale: false,
@@ -160,7 +167,7 @@ impl Terminal {
         false
     }
 
-    /// Output came while it was too soon to look: look now.
+    /// Output came while it was too soon to look, so look now.
     pub fn look_again(&mut self) {
         if self.stale {
             self.looked_at = std::time::Instant::now() - LOOK_EVERY;
@@ -250,7 +257,7 @@ fn shell_name() -> String {
 /// other than the shell's own.
 #[cfg(target_os = "linux")]
 fn foreground_job(pid: u32) -> bool {
-    // Fields after the command name: state, ppid, pgrp, session, tty, tpgid.
+    // After the command name come state, ppid, pgrp, session, tty and tpgid.
     let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
     let Some((_, fields)) = stat.rsplit_once(')') else { return false };
     let fields: Vec<&str> = fields.split_whitespace().collect();

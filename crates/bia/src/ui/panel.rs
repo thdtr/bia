@@ -31,8 +31,8 @@ pub fn terminal(app: &Bia) -> Option<Element<'_, Message>> {
     let view = crate::terminal_view::TerminalView::new(
         TERMINAL_ID,
         active,
-        app.look.editor_font,
-        app.settings.font_size,
+        app.look.terminal_font,
+        app.settings.terminal.font_size.unwrap_or(app.settings.font_size),
         c,
         |size| Message::TermResize(active.id, size),
         |location| Message::TermOpen(active.id, location),
@@ -67,7 +67,7 @@ pub fn terminal(app: &Bia) -> Option<Element<'_, Message>> {
     Some(container(panel).height(Length::Fixed(app.terminal_height())).into())
 }
 
-/// One terminal's tab: its title, and × to close it.
+/// One terminal's tab, with its title and × to close it.
 fn tab<'a>(app: &'a Bia, terminal: &'a Terminal, active: bool) -> Element<'a, Message> {
     let c = app.look.colors;
     let title: String = terminal.name().chars().take(28).collect();

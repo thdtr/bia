@@ -36,10 +36,14 @@ pub enum Command {
     Shortcuts,
     About,
     Quit,
+    Back,
+    Forward,
+    LocalHistory,
+    DefaultSettings,
 }
 
 impl Command {
-    pub const ALL: [Command; 30] = [
+    pub const ALL: [Command; 34] = [
         Command::NewFile,
         Command::NewWindow,
         Command::OpenFile,
@@ -70,6 +74,10 @@ impl Command {
         Command::Shortcuts,
         Command::About,
         Command::Quit,
+        Command::Back,
+        Command::Forward,
+        Command::LocalHistory,
+        Command::DefaultSettings,
     ];
 
     /// What the menu button shows, `None` standing for a separator.
@@ -131,6 +139,10 @@ impl Command {
             Command::Shortcuts => "cmd.shortcuts",
             Command::About => "cmd.about",
             Command::Quit => "cmd.quit",
+            Command::Back => "cmd.back",
+            Command::Forward => "cmd.forward",
+            Command::LocalHistory => "cmd.local_history",
+            Command::DefaultSettings => "cmd.default_settings",
         }
     }
 
@@ -167,19 +179,35 @@ impl Command {
             Command::Settings => "Ctrl+,",
             Command::Commands => "Ctrl+Shift+P",
             Command::Quit => "Ctrl+Q",
+            Command::Back => {
+                if cfg!(target_os = "macos") {
+                    "⌃-"
+                } else {
+                    "Alt+←"
+                }
+            }
+            Command::Forward => {
+                if cfg!(target_os = "macos") {
+                    "⌃⇧-"
+                } else {
+                    "Alt+→"
+                }
+            }
             Command::OpenFile
             | Command::OpenRecent
             | Command::SaveAll
             | Command::CloseFolder
             | Command::CollapseTree
             | Command::Shortcuts
-            | Command::About => return None,
+            | Command::About
+            | Command::LocalHistory
+            | Command::DefaultSettings => return None,
         })
     }
 }
 
 /// Keys that work in the editor, for the shortcuts list. They aren't
-/// commands: they act where the cursors are.
+/// commands, since they act where the cursors are.
 pub const EDITOR_KEYS: [(&str, &str); 16] = [
     ("Ctrl+Z", "keys.undo"),
     ("Ctrl+Shift+Z", "keys.redo"),

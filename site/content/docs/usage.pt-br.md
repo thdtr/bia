@@ -77,6 +77,10 @@ Num repositório git, os arquivos alterados aparecem numa cor e os novos em outr
 
 <kbd>Ctrl+G</kbd> leva o cursor a uma linha do arquivo atual. Também é aceito um valor no formato `linha:coluna`.
 
+<kbd>Alt+←</kbd> volta para onde o cursor estava antes de um salto (abrir um arquivo, ir para uma linha ou uma definição, um resultado de busca), e <kbd>Alt+→</kbd> avança de novo. No Mac, são <kbd>⌃-</kbd> e <kbd>⌃⇧-</kbd>, porque lá <kbd>⌥←</kbd> anda de palavra em palavra.
+
+A palavra sob o cursor ganha uma marca suave nos outros lugares em que aparece na tela. Nos comentários, `TODO`, `FIXME`, `HACK` e `XXX` se destacam. Réguas, guias de indentação e espaços visíveis podem ser ligados nas [configurações](@/docs/settings.pt-br.md).
+
 ## Vários cursores
 
 Todos os comandos de edição agem em cada cursor ao mesmo tempo.
@@ -118,6 +122,8 @@ Três botões ao lado do campo diferenciam maiúsculas, buscam só palavras inte
 ## Buscar nos arquivos
 
 <kbd>Ctrl+Shift+F</kbd> busca em todos os arquivos da pasta, na barra lateral, com as mesmas três opções. <kbd>Enter</kbd> inicia a busca. Ficam de fora os arquivos listados no `.gitignore`, os binários e os maiores que 16 MB. Os arquivos abertos são buscados com as alterações ainda não salvas. Clicar num resultado abre o arquivo com o trecho selecionado.
+
+Os dois campos abaixo das opções limitam a busca. O primeiro recebe os arquivos em que buscar, e o segundo os que ficam de fora, como padrões separados por vírgula, por exemplo `src, *.rs` ou `*.lock, tests`. Um padrão vale para um caminho a partir da pasta aberta, para o nome de um arquivo ou de uma pasta.
 
 <kbd>Ctrl+Shift+E</kbd> volta para a árvore de arquivos.
 
@@ -177,6 +183,10 @@ Se o arquivo foi alterado no disco depois de aberto, o BIA pergunta antes de sob
 Um ponto na aba indica alterações não salvas. Fechar a aba ou sair do BIA nessa situação pede confirmação.
 
 As alterações não salvas também são copiadas para a pasta `backups`, dentro da pasta de configuração, dois segundos depois da última edição. Se o BIA ou o sistema parar antes de salvar, abrir o arquivo de novo traz as alterações de volta. A cópia é apagada quando o arquivo é salvo ou as alterações são descartadas.
+
+Cada salvamento também guarda o texto salvo na pasta `history`, com as últimas 30 versões de cada arquivo. "Histórico local", no menu do botão direito de uma aba ou com <kbd>Ctrl+Shift+P</kbd>, lista as versões por quando foram salvas. Escolher uma põe o texto dela na aba como uma edição, que o <kbd>Ctrl+Z</kbd> desfaz, e nada é gravado até você salvar. Arquivos maiores que 1 MB não entram no histórico.
+
+As configurações podem tirar os espaços do fim das linhas, pôr a última quebra de linha, formatar o arquivo ou salvar sozinhas. Veja [Configurações](@/docs/settings.pt-br.md).
 
 ## Arquivos que o BIA não abre
 

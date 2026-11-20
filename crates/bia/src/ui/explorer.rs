@@ -4,7 +4,7 @@
 //! (see `icons.rs`). Icons are tinted with the theme's muted color, and the
 //! file open in the editor is tinted with the accent.
 //!
-//! Creating and renaming happen in the tree itself: the name field takes
+//! Creating and renaming happen in the tree itself. The name field takes
 //! the place of the row, or of a new row inside the folder. A right click
 //! opens a menu with everything you can do to a row; dragging a row onto a
 //! folder moves it there.

@@ -100,6 +100,44 @@ pub struct CompletionList<'a> {
     pub selected: usize,
 }
 
+/// Where long lines wrap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wrap {
+    Off,
+    /// At the edge of the editor.
+    Edge,
+    /// At this column, or the edge if that comes first.
+    Column(usize),
+}
+
+/// What's drawn around the text, from the settings.
+#[derive(Debug, Clone, Copy)]
+pub struct Look<'a> {
+    /// Columns with a thin line down the editor.
+    pub rulers: &'a [usize],
+    pub indent_guides: bool,
+    pub whitespace: bia_core::settings::Whitespace,
+    pub line_numbers: bool,
+    pub relative_numbers: bool,
+    pub cursor_blink: bool,
+    /// How the language writes comments, to find TODO and FIXME in them.
+    pub comments: Option<bia_core::editing::Comments>,
+}
+
+impl Default for Look<'_> {
+    fn default() -> Self {
+        Self {
+            rulers: &[],
+            indent_guides: false,
+            whitespace: bia_core::settings::Whitespace::None,
+            line_numbers: true,
+            relative_numbers: false,
+            cursor_blink: true,
+            comments: None,
+        }
+    }
+}
+
 /// How long the mouse rests before a hover card is asked for.
 const HOVER_DELAY: Duration = Duration::from_millis(500);
 const CARD_WIDTH: f32 = 460.0;
@@ -121,7 +159,8 @@ pub struct CodeView<'a, Message> {
     size: f32,
     line_height: f32,
     colors: Colors,
-    wrap: bool,
+    wrap: Wrap,
+    look: Look<'a>,
     /// Which file this is, so switching tabs restores its own scroll.
     key: u64,
     scroll: Vector,
@@ -159,7 +198,8 @@ impl<'a, Message> CodeView<'a, Message> {
             size: 14.0,
             line_height: 1.5,
             colors,
-            wrap: false,
+            wrap: Wrap::Off,
+            look: Look::default(),
             key: 0,
             scroll: Vector::ZERO,
             center: 0,
@@ -202,8 +242,15 @@ impl<'a, Message> CodeView<'a, Message> {
         self
     }
 
-    pub fn wrap(mut self, wrap: bool) -> Self {
+    pub fn wrap(mut self, wrap: Wrap) -> Self {
         self.wrap = wrap;
+        self
+    }
+
+    /// Rulers, guides, whitespace and the rest of what's drawn around the
+    /// text.
+    pub fn look(mut self, look: Look<'a>) -> Self {
+        self.look = look;
         self
     }
 
@@ -326,7 +373,12 @@ impl<Message> CodeView<'_, Message> {
             }
         };
         let digits = self.editor.line_count().to_string().len().max(2) as f32;
-        let gutter = GUTTER_LEFT + digits * char + GUTTER_RIGHT;
+        // Without numbers, the gutter keeps room for the git marks.
+        let gutter = if self.look.line_numbers {
+            GUTTER_LEFT + digits * char + GUTTER_RIGHT
+        } else {
+            GUTTER_LEFT
+        };
         Metrics {
             line: (self.size * self.line_height).round(),
             char,
@@ -340,8 +392,12 @@ impl<Message> CodeView<'_, Message> {
     /// The file's rows, brought up to date first if the text or the width
     /// changed. The map lives in the buffer, where Up and Down use it too.
     fn display(&self, m: &Metrics) -> Ref<'_, DisplayMap> {
-        let wrap =
-            self.wrap.then(|| ((m.text_width() - SCROLLBAR) / m.char).floor().max(8.0) as usize);
+        let edge = ((m.text_width() - SCROLLBAR) / m.char).floor().max(8.0) as usize;
+        let wrap = match self.wrap {
+            Wrap::Off => None,
+            Wrap::Edge => Some(edge),
+            Wrap::Column(column) => Some(column.clamp(8, edge)),
+        };
         if !self.display.borrow().is_current(self.editor, wrap) {
             self.display.borrow_mut().sync(self.editor, wrap);
         }
@@ -384,7 +440,7 @@ impl<Message> CodeView<'_, Message> {
         // A file that fits doesn't scroll at all; a longer one can scroll
         // until its last line is halfway up.
         let y = if content + m.line <= m.height { 0.0 } else { content - m.height / 2.0 };
-        let x = if self.wrap {
+        let x = if self.wrap != Wrap::Off {
             0.0
         } else {
             let wide = (self.widest(cache) as f32 + 2.0) * m.char;
@@ -922,6 +978,9 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
         // so everything drawn comes from (and stays in) the cache.
         cache.paragraphs.next_frame();
         let mut rows: Vec<(usize, Row, RowText, Paragraph)> = Vec::new();
+        // Each row's whole line, for what's drawn by words, like occurrences,
+        // TODO marks, indentation.
+        let mut texts: Vec<std::rc::Rc<str>> = Vec::new();
         let mut line_text = (usize::MAX, String::new());
         for row in first..=last {
             let line = display.line_of_row(row);
@@ -932,13 +991,26 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
             let row_text = RowText::new(&line_text.1, r.start, r.end, self.editor.tab_width);
             let style = styles.get(line - first_line).cloned().unwrap_or_default();
             let paragraph = self.cached_paragraph(&mut cache, &row_text, &r, &style);
+            if texts.last().is_none_or(|t| **t != *line_text.1) || r.start == 0 {
+                texts.push(std::rc::Rc::from(line_text.1.as_str()));
+            } else {
+                let same = texts[texts.len() - 1].clone();
+                texts.push(same);
+            }
             rows.push((row, r, row_text, paragraph));
         }
         let current_line = self.editor.line_of(self.editor.selections().primary().head);
         let numbers: Vec<(usize, usize, Paragraph)> = rows
             .iter()
-            .filter(|(_, r, ..)| r.start == 0)
-            .map(|(row, r, ..)| (*row, r.line, self.number(&mut cache, r.line + 1)))
+            .filter(|(_, r, ..)| r.start == 0 && self.look.line_numbers)
+            .map(|(row, r, ..)| {
+                let n = if self.look.relative_numbers && r.line != current_line {
+                    r.line.abs_diff(current_line)
+                } else {
+                    r.line + 1
+                };
+                (*row, r.line, self.number(&mut cache, n))
+            })
             .collect();
         // Cards over the text: the hover card and the completion list.
         let caret_at = |at: usize| {
@@ -1028,6 +1100,23 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
         let selections = self.editor.selections();
         let primary = selections.primary();
         let focused = state.focus.is_some();
+        // The word at the cursor, or a short selection on one line. Its other
+        // places get a soft mark.
+        let occurrence: Option<String> = if primary.is_empty() {
+            let line = self.editor.line_of(primary.head);
+            let text = self.editor.line(line);
+            let at = primary.head - self.editor.line_start(line);
+            bia_core::text::word_at(&text, at).filter(|w| w.len() > 1).map(|w| text[w].to_owned())
+        } else if selections.len() == 1 && primary.end() - primary.start() <= 100 {
+            let line = self.editor.line_of(primary.start());
+            let text = self.editor.line(line);
+            let start = self.editor.line_start(line);
+            text.get(primary.start() - start..primary.end() - start)
+                .filter(|w| w.chars().any(|c| c.is_alphanumeric() || c == '_'))
+                .map(str::to_owned)
+        } else {
+            None
+        };
         let brackets =
             if primary.is_empty() { self.editor.matching_bracket(primary.head) } else { None };
 
@@ -1046,6 +1135,62 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                             Size::new(text_area.width, m.line),
                         );
                         fill(renderer, rect, c.hover);
+                    }
+                }
+            }
+            // Rulers, at their columns.
+            for &column in self.look.rulers {
+                let x = origin_x + column as f32 * m.char;
+                if x > text_area.x && x < text_area.x + text_area.width {
+                    let rect = Rectangle::new(
+                        Point::new(x.round(), text_area.y),
+                        Size::new(1.0, text_area.height),
+                    );
+                    fill(renderer, rect, c.border);
+                }
+            }
+            // Indent guides, a line at each level of a line's indentation.
+            // A blank line takes the indentation of the line above it.
+            if self.look.indent_guides {
+                let tab = self.editor.tab_width;
+                let unit =
+                    if self.editor.indent.tabs { tab } else { self.editor.indent.width }.max(1);
+                let mut indent = 0;
+                for ((row, ..), text) in rows.iter().zip(&texts) {
+                    if !text.trim().is_empty() {
+                        let leading = text.len() - text.trim_start().len();
+                        indent = bia_core::editor::display_column(text, leading, tab);
+                    }
+                    let mut column = 0;
+                    while column < indent {
+                        let x = (origin_x + column as f32 * m.char).round();
+                        if x >= text_area.x {
+                            let rect =
+                                Rectangle::new(Point::new(x, row_y(*row)), Size::new(1.0, m.line));
+                            fill(renderer, rect, with_alpha(c.muted, 0.2));
+                        }
+                        column += unit;
+                    }
+                }
+            }
+            for ((row, r, row_text, paragraph), text) in rows.iter().zip(&texts) {
+                let line_start = self.editor.line_start(r.line);
+                // The other places the word under the cursor is.
+                if let Some(word) = &occurrence {
+                    for place in bia_core::text::word_places(text, word) {
+                        let range = line_start + place.start..line_start + place.end;
+                        if let Some(rect) =
+                            span_rect(*row, r, row_text, paragraph, range, line_start)
+                        {
+                            fill(renderer, rect, with_alpha(c.muted, 0.22));
+                        }
+                    }
+                }
+                // TODO, FIXME… in comments.
+                for place in bia_core::editing::markers(text, self.look.comments) {
+                    let range = line_start + place.start..line_start + place.end;
+                    if let Some(rect) = span_rect(*row, r, row_text, paragraph, range, line_start) {
+                        fill(renderer, rect, with_alpha(c.modified, 0.3));
                     }
                 }
             }
@@ -1093,10 +1238,53 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
                     text_area,
                 );
             }
+            // Spaces as dots and tabs as dashes, everywhere or in selections.
+            if self.look.whitespace != bia_core::settings::Whitespace::None {
+                let all = self.look.whitespace == bia_core::settings::Whitespace::All;
+                let color = with_alpha(c.muted, 0.55);
+                for ((row, r, row_text, paragraph), text) in rows.iter().zip(&texts) {
+                    let line_start = self.editor.line_start(r.line);
+                    let mut graphemes = row_text.text.grapheme_indices(true).peekable();
+                    let mut index = 0;
+                    let x_at =
+                        |index: usize| paragraph.grapheme_position(0, index).map_or(0.0, |p| p.x);
+                    for (i, ch) in text[r.start..r.end].char_indices() {
+                        if ch != ' ' && ch != '\t' {
+                            continue;
+                        }
+                        let at = line_start + r.start + i;
+                        if !all && !selections.iter().any(|s| s.start() <= at && at < s.end()) {
+                            continue;
+                        }
+                        let byte = row_text.to_text(r.start + i);
+                        while graphemes.peek().is_some_and(|(b, _)| *b < byte) {
+                            graphemes.next();
+                            index += 1;
+                        }
+                        let x = origin_x + x_at(index);
+                        let mid = row_y(*row) + m.line / 2.0;
+                        let rect = if ch == ' ' {
+                            Rectangle::new(
+                                Point::new(x + m.char / 2.0 - 1.0, mid - 1.0),
+                                Size::new(2.0, 2.0),
+                            )
+                        } else {
+                            let end = row_text.to_text(r.start + i + 1);
+                            let cells = (end - byte).max(1) as f32;
+                            Rectangle::new(
+                                Point::new(x + 2.0, mid),
+                                Size::new(cells * m.char - 4.0, 1.0),
+                            )
+                        };
+                        fill(renderer, rect, color);
+                    }
+                }
+            }
         });
 
         // Cursors, over the text.
-        let blink = state.focus.as_ref().is_some_and(Focus::cursor_visible);
+        let blink =
+            state.focus.as_ref().is_some_and(|f| !self.look.cursor_blink || f.cursor_visible());
         if blink {
             renderer.with_layer(text_area, |renderer| {
                 for s in selections.iter() {

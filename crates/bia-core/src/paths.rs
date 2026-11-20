@@ -5,6 +5,7 @@
 //! ├── settings.json
 //! ├── state.json   (written by BIA: folders opened and their open files)
 //! ├── backups/     (written by BIA: unsaved edits, until saved or discarded)
+//! ├── history/     (written by BIA, the last 30 versions you saved of each file)
 //! ├── themes/      *.json      (custom themes)
 //! └── languages/   *.sublime-syntax  (extra grammars)
 //! ```
@@ -34,6 +35,11 @@ pub fn state_file() -> PathBuf {
 
 pub fn backups_dir() -> PathBuf {
     config_dir().join("backups")
+}
+
+/// Versions of the files you saved (see `history.rs`).
+pub fn history_dir() -> PathBuf {
+    config_dir().join("history")
 }
 
 /// Where files that were never saved would live. Nothing is written here:

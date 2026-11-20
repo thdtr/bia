@@ -32,7 +32,7 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     .into()
 }
 
-/// One side of the split: its tabs and its active file.
+/// One side of the split, with its tabs and its active file.
 fn side(app: &Bia, pane: Pane) -> Element<'_, Message> {
     let c = app.look.colors;
     let Some((_, tab)) = app.tabs.active_in(pane) else { return space().into() };
@@ -114,7 +114,7 @@ fn tab_strip(app: &Bia, pane: Pane) -> Element<'_, Message> {
 }
 
 /// One tab. `marker` is the color of the bar under it when it is the
-/// active tab of its side: the accent on the focused side.
+/// active tab of its side, in the accent on the focused side.
 fn tab_view<'a>(
     app: &'a Bia,
     index: usize,
@@ -299,14 +299,23 @@ fn editor_area<'a>(
             CompletionList { at: c.start, items: c.labels().collect(), selected: c.selected }
         }))
         .git(buffer.git.marks())
-        .wrap(app.settings.soft_wrap)
+        .wrap(app.wrap_for(&buffer.editor.syntax))
+        .look(crate::code_view::Look {
+            rulers: app.rulers_for(&buffer.editor.syntax),
+            indent_guides: app.settings.indent_guides,
+            whitespace: app.settings.show_whitespace,
+            line_numbers: app.settings.line_numbers,
+            relative_numbers: app.settings.relative_line_numbers,
+            cursor_blink: app.settings.cursor_blink,
+            comments: bia_core::editing::comments(&buffer.editor.syntax),
+        })
         .scroll(hasher.finish(), tab.scroll, buffer.center)
         .into();
 
     code
 }
 
-/// A preview tab: the Markdown of the file open in another tab, kept up to
+/// A preview tab shows the Markdown of the file open in another tab, kept up to
 /// date as you type there.
 fn preview<'a>(app: &'a Bia, tab: &'a Tab) -> Element<'a, Message> {
     let c = app.look.colors;

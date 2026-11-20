@@ -63,9 +63,21 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
         (None, false, None) => hint(app, t.t("search.hint")),
     };
 
-    let controls = column![input, options, status.wrapping(Wrapping::WordOrGlyph)]
-        .spacing(8)
-        .padding(Padding { top: 0.0, bottom: 10.0, left: 14.0, right: 14.0 });
+    let filter = |placeholder: &str, value: &str, on_input: fn(String) -> Message| {
+        text_input(placeholder, value)
+            .on_input(on_input)
+            .on_submit(Message::SearchSubmit)
+            .font(app.look.ui_font)
+            .size(app.settings.ui_font_size - 1.0)
+            .padding([3, 8])
+            .style(style::input(c))
+    };
+    let include = filter(t.t("search.include"), &search.include, Message::SearchInclude);
+    let exclude = filter(t.t("search.exclude"), &search.exclude, Message::SearchExclude);
+    let controls =
+        column![input, options, include, exclude, status.wrapping(Wrapping::WordOrGlyph)]
+            .spacing(8)
+            .padding(Padding { top: 0.0, bottom: 10.0, left: 14.0, right: 14.0 });
 
     let mut list = Column::new();
     if let Some(found) = &search.found {

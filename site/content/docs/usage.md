@@ -77,6 +77,10 @@ In a git repository, changed files are shown in one color and new files in anoth
 
 <kbd>Ctrl+G</kbd> moves the cursor to a line in the current file. A value in the form `line:column` is also accepted.
 
+<kbd>Alt+←</kbd> goes back to where the cursor was before a jump (opening a file, going to a line or a definition, a search result), and <kbd>Alt+→</kbd> goes forward again. On a Mac, these are <kbd>⌃-</kbd> and <kbd>⌃⇧-</kbd>, since <kbd>⌥←</kbd> moves by word there.
+
+The word under the cursor gets a soft mark wherever else it shows on screen. In comments, `TODO`, `FIXME`, `HACK` and `XXX` stand out. Rulers, indent guides and visible spaces can be set in the [settings](@/docs/settings.md).
+
 ## Several cursors
 
 Every editing command works at each cursor at once.
@@ -118,6 +122,8 @@ Three buttons next to the field match case, match whole words and read the text 
 ## Find in files
 
 <kbd>Ctrl+Shift+F</kbd> searches every file in the folder, in the sidebar, with the same three options. <kbd>Enter</kbd> starts the search. Files listed in `.gitignore`, binary files and files over 16 MB are skipped. Open files are searched with their unsaved changes. Clicking a result opens the file with the match selected.
+
+The two fields under the options narrow the search. The first takes the files to look in, and the second the files to leave out, as patterns separated by commas, such as `src, *.rs` or `*.lock, tests`. A pattern matches a path from the open folder, a file name or a folder name.
 
 <kbd>Ctrl+Shift+E</kbd> goes back to the file tree.
 
@@ -177,6 +183,10 @@ If a file changed on disk after it was opened, BIA asks before overwriting it. C
 A dot on a tab marks unsaved changes. Closing the tab or quitting with unsaved changes asks for confirmation.
 
 Unsaved changes are also copied to the `backups` folder, in the configuration folder, two seconds after the last edit. If BIA or the system stops before they are saved, opening the file again brings them back. The copy is deleted once the file is saved or the changes are discarded.
+
+Every save also keeps the saved text in the `history` folder, the last 30 versions of each file. "Local history", in a tab's right-click menu or with <kbd>Ctrl+Shift+P</kbd>, lists them by when they were saved. Picking one puts its text in the tab as an edit, which <kbd>Ctrl+Z</kbd> takes back, and nothing is written until you save. Files over 1 MB aren't kept.
+
+Settings can trim the spaces at the end of lines, add the last line break, format the file or save on their own. See [Settings](@/docs/settings.md).
 
 ## Files BIA does not open
 

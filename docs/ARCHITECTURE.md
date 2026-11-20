@@ -152,7 +152,7 @@ few things an editor can't really do without:
 | Atomic saves, line endings and BOM kept | Saving never corrupts a file or turns every line into a diff. |
 | Binary, non-UTF-8, CR-only and >16 MB files refused | Opening them as text would corrupt them or freeze the editor. |
 | Outside changes noticed on focus and on save | After a `git checkout`, you don't overwrite the new version with an old one. |
-| Create, rename, move, copy and trash from the tree | Organizing files means more than looking at them. Names are typed in the tree itself, a right click opens a menu (`ui/menu.rs` reports where the click was, which `mouse_area` doesn't), and rows can be dragged onto folders. `fs_ops` never replaces anything: a copy gets a free name, and a move onto a taken name fails. |
+| Create, rename, move, copy and trash from the tree | Organizing files means more than looking at them. Names are typed in the tree itself, a right click opens a menu (`ui/menu.rs` reports where the click was, which `mouse_area` doesn't), and rows can be dragged onto folders. `fs_ops` never replaces anything. A copy gets a free name, and a move onto a taken name fails. |
 | `bia <path>` on the command line | That's how most developers open an editor. |
 | Reopen the last folder | Opened from the app menu, BIA would otherwise start empty every time. The folder is kept in `state.json`, next to `settings.json`, so BIA never rewrites the file you edit. |
 | A test for missing translations | A missing string fails CI instead of showing up as a key. |
@@ -164,6 +164,8 @@ few things an editor can't really do without:
 | Two sides (`Ctrl+\`) | Tabs keep one list, each tab on the left or right side, and each side has its own active tab (`tabs.rs`). A file is open on one side at a time, so there's never a second buffer of the same file to keep in sync. The Markdown preview is a tab on the other side that reads its file's buffer. |
 | One table of commands | `commands.rs` names every command once, with its keys. The palette (`Ctrl+Shift+P`), the menu button and the shortcuts list are all built from it. |
 | Files never saved | `Ctrl+N` makes a tab whose path is a stand-in under `<config>/untitled/`, a folder nobody writes to. That path gives it a backup like any other tab, so its text survives quitting and crashes, and comes back at the next start. |
+| Local history | Each save copies the saved text to `<config>/history/<hash of the path>/`, the last 30 per file, files up to 1 MB (`history.rs`). Bringing a version back is an edit in the tab, so undo and the dirty dot work as usual. |
+| `.editorconfig` | `editorconfig.rs` reads the files from the file's folder up to `root = true`, with its own small glob matcher (the same one the find-in-files filters use). Its answer wins over the settings and over what the file's indentation suggests. |
 | Sizes you drag | The sidebar's width and the terminal's height live in `state.json`, not in the settings. |
 | Git: changed lines, changed files, the branch | Marks beside the line numbers, colors in the tree, the branch in the status bar. Refreshed on save and when the window gets focus back. |
 | Backups of unsaved edits | Written to `backups/` two seconds after the last edit, removed on save or discard. A crash loses at most those two seconds. |

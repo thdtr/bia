@@ -89,7 +89,7 @@ impl Pane {
 }
 
 /// Every open tab, in one list, each on a side of the split. Each side has
-/// its own active tab, and one side has the focus: "the active tab" is the
+/// its own active tab, and one side has the focus. "The active tab" is the
 /// focused side's.
 ///
 /// Two rules always hold. The right side has tabs only while the left

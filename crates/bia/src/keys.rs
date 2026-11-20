@@ -79,6 +79,9 @@ pub enum Shortcut {
     ReopenTab,
     Commands,
     Quit,
+    /// Back to where the cursor was before the last jump, and forward again.
+    Back,
+    Forward,
     Rename,
     Delete,
     ZoomIn,
@@ -88,7 +91,7 @@ pub enum Shortcut {
     NewTerminal,
     Split,
     /// Ctrl+X, Ctrl+C and Ctrl+V, when no editor, terminal or text field
-    /// took them: they act on the file tree.
+    /// took them, act on the file tree.
     Cut,
     Copy,
     Paste,
@@ -101,7 +104,7 @@ pub enum Shortcut {
 
 const MAC: bool = cfg!(target_os = "macos");
 
-/// The key left of 1, whatever it types: ` on a US keyboard, ' on a
+/// The key left of 1, whatever it types. That's ` on a US keyboard and ' on a
 /// Brazilian one, where ` is a dead key. Shift turns it into ~ or ".
 pub fn is_backquote(key: &Key, physical: Physical) -> bool {
     use iced::keyboard::key::Code;
@@ -125,6 +128,8 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
             Named::Tab if mods.control() => Some(NextTab),
             Named::ArrowUp => Some(Up),
             Named::ArrowDown => Some(Down),
+            Named::ArrowLeft if mods.alt() && !MAC && !cmd => Some(Back),
+            Named::ArrowRight if mods.alt() && !MAC && !cmd => Some(Forward),
             _ => None,
         };
     }
@@ -132,6 +137,10 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
     // windows.
     if mods.control() && is_backquote(key, physical) {
         return Some(if shift { NewTerminal } else { Terminal });
+    }
+    // Ctrl+- and Ctrl+Shift+- on a Mac, where Option+Left moves by word.
+    if MAC && mods.control() && !mods.logo() && key.to_latin(physical) == Some('-') {
+        return Some(if shift { Forward } else { Back });
     }
     if !cmd {
         return None;
@@ -234,6 +243,8 @@ pub fn editor_command(key: &Key, physical: Physical, mods: Modifiers) -> Option<
     let word = if MAC { alt } else { cmd };
     if let Key::Named(named) = key {
         return Some(match named {
+            // Alt+Left and Alt+Right go back and forward (see `shortcut`).
+            Named::ArrowLeft | Named::ArrowRight if alt && !MAC && !cmd && !shift => return None,
             Named::ArrowLeft | Named::ArrowRight => {
                 let right = *named == Named::ArrowRight;
                 let motion = if MAC && cmd {

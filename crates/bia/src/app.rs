@@ -33,7 +33,7 @@ use bia_core::state::{OpenFile, Session, State};
 use bia_core::text;
 use bia_core::theme::Theme as BiaTheme;
 use bia_core::tree::{self, FileTree};
-use bia_core::{I18n, Lang, paths};
+use bia_core::{I18n, Lang, editing, paths};
 use iced::widget::{operation, svg};
 use iced::{Event, Font, Subscription, Task, Vector, event, keyboard, window};
 use std::collections::HashMap;
@@ -172,9 +172,13 @@ pub enum Message {
     CloseOverlay,
     /// Puts this text on the clipboard and says so.
     Copy(String),
+    /// The language server didn't format this file in time to save it.
+    FormatTimedOut(PathBuf),
+    /// The window lost the focus.
+    WindowUnfocused,
     /// The file tree scrolled: offset and height of what's in sight.
     TreeScrolled(f32, f32),
-    /// The mouse went down on a row of the tree: a click or a drag starts.
+    /// The mouse went down on a row of the tree, so a click or a drag starts.
     RowDown(PathBuf),
     /// The mouse is over a row of the tree.
     RowEnter(PathBuf),
@@ -207,6 +211,8 @@ pub enum Message {
     FindOption(FindOption),
     ShowPanel(Panel),
     SearchInput(String),
+    SearchInclude(String),
+    SearchExclude(String),
     SearchSubmit,
     SearchOption(FindOption),
     SearchDone(u64, Arc<Found>),
@@ -268,7 +274,7 @@ pub enum CloseWhich {
     All,
 }
 
-/// What a window over everything shows: about BIA, or the shortcuts.
+/// What a card over everything shows, about BIA or the shortcuts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Overlay {
     About,
@@ -291,7 +297,7 @@ pub enum Splitter {
     Terminal,
 }
 
-/// A divider being dragged: where the mouse was when it started to move,
+/// A divider being dragged, with where the mouse was when it started to move
 /// and the size it had then.
 struct Drag {
     splitter: Splitter,
@@ -306,12 +312,12 @@ pub const TERMINAL_HEIGHT: f32 = 260.0;
 pub enum Dialog {
     /// A program is running in a terminal that is about to close.
     Busy(Closing),
-    /// Quitting or closing the folder with unsaved files: save all,
+    /// Quitting or closing the folder with unsaved files. Save all,
     /// discard, cancel.
     Unsaved(After),
     /// Closing a tab with unsaved changes: save, discard, cancel.
     Close(PathBuf),
-    /// Moving a file or folder to the trash: trash, cancel.
+    /// Moving a file or folder to the trash. Trash or cancel.
     Trash(PathBuf),
     /// Saving a file that changed on disk since it was opened: overwrite,
     /// load the disk version, cancel.
@@ -416,6 +422,9 @@ pub enum Panel {
 #[derive(Default)]
 pub struct ProjectSearch {
     pub query: String,
+    /// Files to look in, and files to leave out (see `text::path_filter`).
+    pub include: String,
+    pub exclude: String,
     pub options: search::Options,
     pub found: Option<Arc<Found>>,
     pub running: bool,
@@ -439,10 +448,12 @@ pub enum PaletteMode {
     Line,
     /// A new name for the symbol at `at` in `path` (language server).
     Rename { path: PathBuf, at: usize },
-    /// Ctrl+Shift+P: run a command by name.
+    /// Ctrl+Shift+P runs a command by name.
     Commands { results: Vec<crate::commands::Command> },
     /// A folder opened before.
     Recent { results: Vec<PathBuf> },
+    /// A saved version of `path` to bring back.
+    History { path: PathBuf, versions: Vec<bia_core::history::Version> },
 }
 
 /// The files of the open folder, for "open file by name". Listed in the
@@ -472,6 +483,8 @@ pub struct Look {
     pub syntaxes: Arc<SyntaxSet>,
     pub editor_font: Font,
     pub ui_font: Font,
+    /// The terminal's font, its own or the editor's.
+    pub terminal_font: Font,
     /// The logo, painted in the theme's colors.
     pub logo: svg::Handle,
     /// Bumped on every rebuild so highlighters know to start over.
@@ -497,6 +510,11 @@ impl Look {
             colors,
             editor_font,
             ui_font: fonts::from_setting(&settings.ui_font_family),
+            terminal_font: settings
+                .terminal
+                .font_family
+                .as_deref()
+                .map_or(editor_font, fonts::from_setting),
             logo: ui::style::logo(colors),
             generation,
             i18n,
@@ -550,6 +568,19 @@ pub struct Bia {
     window_position: Option<iced::Point>,
     maximized: bool,
     pub overlay: Option<Overlay>,
+    /// Files waiting for the language server to format them before they're
+    /// saved.
+    format_then_save: std::collections::HashSet<PathBuf>,
+    /// An autosave is running (see [`Bia::autosave`]).
+    saving_quietly: bool,
+    /// Places the cursor was before a jump, for Back, and after going back,
+    /// for Forward.
+    back: Vec<(PathBuf, usize)>,
+    forward: Vec<(PathBuf, usize)>,
+    /// When the last place was remembered. A jump that goes through two
+    /// steps (open, then go to a line) is remembered once.
+    remembered_at: Option<Instant>,
+    navigating: bool,
     /// Tabs closed lately, newest last, with their cursor, for Ctrl+Shift+T.
     closed: Vec<(PathBuf, usize, usize)>,
     /// The tab a right click landed on, until its menu opens.
@@ -620,6 +651,12 @@ impl Bia {
             maximized: state.layout.maximized,
             overlay: None,
             closed: Vec::new(),
+            format_then_save: Default::default(),
+            saving_quietly: false,
+            back: Vec::new(),
+            forward: Vec::new(),
+            remembered_at: None,
+            navigating: false,
             tab_target: None,
             panel: Panel::Files,
             project_search: ProjectSearch::default(),
@@ -636,12 +673,14 @@ impl Bia {
         if let Some(e) = errors.into_iter().next() {
             app.error(e);
         }
+        app.warn_unknown_keys();
 
         let mut tasks = Vec::new();
         // With nothing on the command line, BIA reopens the last folder and
         // the files that were open in it.
         if paths.is_empty()
             && !new_window
+            && app.settings.restore_on_startup
             && let Some(folder) = state.last_folder()
         {
             tasks.push(app.open_root(folder.to_path_buf(), true));
@@ -705,6 +744,7 @@ impl Bia {
     pub fn subscription(&self) -> Subscription<Message> {
         let keys = event::listen_with(|event, status, window| match event {
             Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
+            Event::Window(window::Event::Unfocused) => Some(Message::WindowUnfocused),
             Event::Window(window::Event::CloseRequested) => Some(Message::CloseRequested),
             Event::Window(window::Event::Opened { size, .. } | window::Event::Resized(size)) => {
                 Some(Message::WindowResized(window, size))
@@ -736,7 +776,7 @@ impl Bia {
         } else {
             Subscription::none()
         };
-        // A row of the tree was pressed: its release is a click or a drop,
+        // While a row of the tree is pressed, its release is a click or a drop,
         // wherever the mouse is by then.
         let tree_drag = if self.tree_drag.is_some() {
             event::listen_with(|event, _, _| match event {
@@ -776,8 +816,43 @@ impl Bia {
     }
 
     fn detect_syntax(&self, path: &Path, text: &str) -> String {
+        self.detect_syntax_with(&self.settings, path, text)
+    }
+
+    /// The language of `path`: what `file_types` says, if it names one BIA
+    /// knows, or else what the name and first line tell.
+    fn detect_syntax_with(&self, settings: &Settings, path: &Path, text: &str) -> String {
+        let named = path
+            .file_name()
+            .and_then(|n| settings.file_type(&n.to_string_lossy()).map(str::to_owned))
+            .and_then(|name| self.look.syntaxes.find_syntax_by_name(&name).map(|s| s.name.clone()));
+        if let Some(name) = named {
+            return name;
+        }
         let first_line = text.lines().next().unwrap_or_default();
         language::detect(&self.look.syntaxes, path, first_line).name.clone()
+    }
+
+    /// How a file in `syntax` is indented, and how wide its tabs look. The
+    /// project's `.editorconfig` comes first, then what the file already
+    /// does, then the settings.
+    fn indent_for(
+        settings: &Settings,
+        path: &Path,
+        syntax: &str,
+        text: &str,
+        config: bia_core::editorconfig::Props,
+    ) -> (Indent, usize) {
+        let own = settings.for_language(syntax);
+        let tab_width =
+            config.tab_width.or(config.indent_size).unwrap_or(own.tab_size).clamp(1, 16);
+        let size = config.indent_size.unwrap_or(tab_width);
+        let indent = match config.tabs {
+            Some(true) => Indent::tabs(tab_width),
+            Some(false) => Indent::spaces(size),
+            None => Indent::for_file(path, text, size, !own.insert_spaces),
+        };
+        (indent, tab_width)
     }
 
     // ── Notices ──────────────────────────────────────────────────────────
@@ -793,6 +868,16 @@ impl Bia {
     fn expire_notice(&mut self) {
         if self.notice.as_ref().is_some_and(|n| n.at.elapsed() > NOTICE_TTL) {
             self.notice = None;
+        }
+    }
+
+    /// Points out a key settings.json has that BIA doesn't read. It's a typo,
+    /// usually, that would otherwise do nothing without a word.
+    fn warn_unknown_keys(&mut self) {
+        let json = fs::read_to_string(paths::settings_file()).unwrap_or_default();
+        if let Some(key) = Settings::unknown_keys(&json).into_iter().next() {
+            let text = self.look.i18n.f("notice.unknown_key", &[("key", &key)]);
+            self.error(text);
         }
     }
 
@@ -830,6 +915,14 @@ impl Bia {
             Message::BackupTick => {
                 self.backup_scheduled = false;
                 self.save_session();
+                // Two seconds after the last key, "after_delay" saves here.
+                if self.settings.autosave == bia_core::settings::Autosave::AfterDelay
+                    && !self.dirty_files().is_empty()
+                    && self.dialog.is_none()
+                {
+                    let save = self.autosave();
+                    return Task::batch([save, self.write_backups()]);
+                }
                 return self.write_backups();
             }
 
@@ -878,6 +971,9 @@ impl Bia {
             Message::PromptSubmit => return self.submit_prompt(),
 
             Message::SelectTab(index) => {
+                if index != self.tabs.active_index() {
+                    self.remember_place();
+                }
                 if self.tabs.select(index) {
                     let reveal = self.reveal_active();
                     return Task::batch([reveal, self.focus_editor()]);
@@ -1011,7 +1107,7 @@ impl Bia {
                     }
                 }
                 TermEvent::Copy(text) => return iced::clipboard::write(text),
-                // `exit` or Ctrl+D: the tab goes away with its shell.
+                // After `exit` or Ctrl+D, the tab goes away with its shell.
                 TermEvent::Exit => return self.close_terminal(id),
             },
             Message::TermResize(id, size) => {
@@ -1090,6 +1186,12 @@ impl Bia {
             Message::CloseTabs(index, which) => return self.close_tabs(index, which),
             Message::MainMenu => self.main_menu(),
             Message::CloseOverlay => self.overlay = None,
+            Message::FormatTimedOut(path) => return self.save_after_format(&path),
+            Message::WindowUnfocused => {
+                if self.settings.autosave == bia_core::settings::Autosave::FocusChange {
+                    return self.autosave();
+                }
+            }
             Message::Copy(text) => {
                 let notice = self.look.i18n.f("notice.copied", &[("text", &text)]);
                 self.info(notice);
@@ -1110,6 +1212,9 @@ impl Bia {
                 self.lsp.completion = None;
                 if self.tabs.active().is_some_and(is_untitled) {
                     return self.save_as(self.tabs.active_index(), false);
+                }
+                if let Some(wait) = self.format_before_save() {
+                    return wait;
                 }
                 self.save(self.tabs.active_index(), false);
                 if let Some(path) = self.tabs.active().map(|t| t.path.clone()) {
@@ -1166,6 +1271,8 @@ impl Bia {
             Message::FindSubmit => return self.find_step(true, false),
             Message::ShowPanel(panel) => return self.show_panel(panel),
             Message::SearchInput(query) => self.project_search.query = query,
+            Message::SearchInclude(include) => self.project_search.include = include,
+            Message::SearchExclude(exclude) => self.project_search.exclude = exclude,
             Message::SearchSubmit => return self.run_search(),
             Message::SearchOption(option) => {
                 let o = &mut self.project_search.options;
@@ -1276,6 +1383,7 @@ impl Bia {
                         PaletteMode::Files { results, .. } => results.len(),
                         PaletteMode::Commands { results } => results.len(),
                         PaletteMode::Recent { results } => results.len(),
+                        PaletteMode::History { versions, .. } => versions.len().min(12),
                         PaletteMode::Line | PaletteMode::Rename { .. } => 0,
                     };
                     palette.selected = match shortcut {
@@ -1306,6 +1414,8 @@ impl Bia {
             Shortcut::ReopenTab => return self.reopen_tab(),
             Shortcut::Commands => return self.open_commands(),
             Shortcut::Quit => return self.quit(true),
+            Shortcut::Back => return self.go_back(),
+            Shortcut::Forward => return self.go_forward(),
             // These reach the app only when no editor, terminal or field took
             // them, so they act on what's selected in the tree.
             Shortcut::Rename | Shortcut::Delete | Shortcut::Cut | Shortcut::Copy => {
@@ -1414,7 +1524,7 @@ impl Bia {
         operation::focus(TERMINAL_ID)
     }
 
-    /// Ctrl+Shift+` or the + button: another shell, in a new tab.
+    /// Ctrl+Shift+` or the + button starts another shell, in a new tab.
     fn new_terminal(&mut self) -> Task<Message> {
         let dir = self
             .tree
@@ -1433,7 +1543,13 @@ impl Bia {
         let Some(events) = self.term_events.clone() else { return Task::none() };
         let size = crate::terminal::Size { columns: 80, lines: 12 };
         let id = self.terminals.next_id();
-        match Terminal::spawn(id, &dir, size, events) {
+        let shell = self
+            .settings
+            .terminal
+            .shell
+            .split_first()
+            .map(|(program, args)| (program.clone(), args.to_vec()));
+        match Terminal::spawn(id, &dir, size, events, shell) {
             Ok(terminal) => self.terminals.push(terminal),
             Err(e) => {
                 let text = self.look.i18n.f("notice.terminal_failed", &[("error", &e)]);
@@ -1486,7 +1602,7 @@ impl Bia {
         self.save_layout();
     }
 
-    /// The mouse moved while a divider is held: the panel follows it, but
+    /// The mouse moved while a divider is held. The panel follows it, but
     /// leaves the editor some room.
     fn dragged(&mut self, at: iced::Point) {
         let window = self.window;
@@ -1509,6 +1625,28 @@ impl Bia {
 
     /// The sizes the sidebar and the terminal take on screen, kept inside
     /// a window that may have shrunk since they were set.
+    /// The rulers for a file in `language`.
+    pub fn rulers_for(&self, language: &str) -> &[usize] {
+        self.settings
+            .languages
+            .get(language)
+            .and_then(|l| l.rulers.as_deref())
+            .unwrap_or(&self.settings.rulers)
+    }
+
+    /// Where long lines wrap in a file in `language`.
+    pub fn wrap_for(&self, language: &str) -> crate::code_view::Wrap {
+        use crate::code_view::Wrap;
+        use bia_core::settings::SoftWrap;
+        match self.settings.for_language(language).soft_wrap {
+            SoftWrap::Off => Wrap::Off,
+            SoftWrap::Edge => Wrap::Edge,
+            SoftWrap::Ruler => {
+                self.rulers_for(language).first().map_or(Wrap::Edge, |&c| Wrap::Column(c))
+            }
+        }
+    }
+
     pub fn window_size(&self) -> iced::Size {
         self.window
     }
@@ -1533,7 +1671,7 @@ impl Bia {
 
     // ── Quitting ─────────────────────────────────────────────────────────
 
-    /// Closing the window: first a program running in a terminal, then
+    /// Closing the window. First a program running in a terminal, then
     /// unsaved files, each asks before anything is lost.
     fn quit(&mut self, check_terminals: bool) -> Task<Message> {
         if check_terminals && self.terminals.any_busy() {
@@ -1547,7 +1685,7 @@ impl Bia {
     }
 
     /// Tabs with unsaved changes to a file. Files never saved aren't
-    /// among them: they're kept for next time instead.
+    /// among them, since they're kept for next time instead.
     pub fn dirty_files(&self) -> Vec<usize> {
         self.tabs
             .dirty_indices()
@@ -1627,11 +1765,140 @@ impl Bia {
             C::Shortcuts => self.overlay = Some(Overlay::Shortcuts),
             C::About => self.overlay = Some(Overlay::About),
             C::Quit => return self.quit(true),
+            C::Back => return self.go_back(),
+            C::Forward => return self.go_forward(),
+            C::LocalHistory => return self.open_history(),
+            C::DefaultSettings => return self.open_default_settings(),
         }
         Task::none()
     }
 
-    /// Ctrl+Shift+N: another BIA, with nothing open.
+    // ── Back and forward ─────────────────────────────────────────────────
+
+    /// Where the cursor is, as the file and the offset in it.
+    fn here(&self) -> Option<(PathBuf, usize)> {
+        let tab = self.tabs.active().filter(|t| !is_untitled(t))?;
+        Some((tab.path.clone(), tab.buffer()?.cursor_offset()))
+    }
+
+    /// Notes where the cursor is before it jumps somewhere else, so Back
+    /// can return there.
+    fn remember_place(&mut self) {
+        if self.navigating
+            || self.remembered_at.is_some_and(|t| t.elapsed() < Duration::from_millis(80))
+        {
+            return;
+        }
+        let Some(place) = self.here() else { return };
+        if self.back.last() != Some(&place) {
+            self.back.push(place);
+            if self.back.len() > 100 {
+                self.back.remove(0);
+            }
+        }
+        self.forward.clear();
+        self.remembered_at = Some(Instant::now());
+    }
+
+    fn go_back(&mut self) -> Task<Message> {
+        let Some(place) = self.back.pop() else { return Task::none() };
+        if let Some(here) = self.here() {
+            self.forward.push(here);
+        }
+        self.jump_to(place)
+    }
+
+    fn go_forward(&mut self) -> Task<Message> {
+        let Some(place) = self.forward.pop() else { return Task::none() };
+        if let Some(here) = self.here() {
+            self.back.push(here);
+        }
+        self.jump_to(place)
+    }
+
+    fn jump_to(&mut self, (path, at): (PathBuf, usize)) -> Task<Message> {
+        if !path.is_file() {
+            return Task::none();
+        }
+        self.navigating = true;
+        let open = self.open(path);
+        self.navigating = false;
+        self.center_seq += 1;
+        let seq = self.center_seq;
+        if let Some(buffer) = self.active_buffer_mut() {
+            let at = at.min(buffer.editor.len());
+            buffer.select(at..at);
+            buffer.center = seq;
+        }
+        Task::batch([open, self.focus_editor()])
+    }
+
+    // ── Local history, default settings ──────────────────────────────────
+
+    fn open_history(&mut self) -> Task<Message> {
+        let Some(tab) = self.tabs.active().filter(|t| t.buffer().is_some() && !is_untitled(t))
+        else {
+            return Task::none();
+        };
+        let path = tab.path.clone();
+        let versions = bia_core::history::list(&paths::history_dir(), &path);
+        let mode = PaletteMode::History { path, versions };
+        self.palette = Some(Palette { mode, query: String::new(), selected: 0 });
+        self.menu = None;
+        operation::focus(PALETTE_ID)
+    }
+
+    /// When a version was saved, the way people say it, like "5 min ago".
+    pub fn ago(&self, when: std::time::SystemTime) -> String {
+        let t = &self.look.i18n;
+        let minutes = when.elapsed().map_or(0, |d| d.as_secs() / 60);
+        match minutes {
+            0 => t.t("history.now").to_owned(),
+            1..60 => t.f("history.minutes", &[("count", &minutes)]),
+            60..1440 => t.f("history.hours", &[("count", &(minutes / 60))]),
+            _ => t.f("history.days", &[("count", &(minutes / 1440))]),
+        }
+    }
+
+    /// Puts a saved version's text in the tab, as an edit Ctrl+Z takes back.
+    /// Nothing is written until you save.
+    fn restore_version(
+        &mut self,
+        path: &Path,
+        version: &bia_core::history::Version,
+    ) -> Task<Message> {
+        let Ok(text) = fs::read_to_string(&version.file) else { return Task::none() };
+        let when = self.ago(version.saved);
+        let Some(buffer) =
+            self.tabs.position(path).and_then(|i| self.tabs.get_mut(i)?.buffer_mut())
+        else {
+            return Task::none();
+        };
+        let len = buffer.editor.len();
+        buffer.replace_all(&[(0..len, text)]);
+        self.lsp.edited(path.to_path_buf());
+        let notice = self.look.i18n.f("notice.restored", &[("when", &when)]);
+        self.info(notice);
+        self.focus_editor()
+    }
+
+    /// Every setting with its default value, in a file of its own, to read
+    /// next to settings.json.
+    fn open_default_settings(&mut self) -> Task<Message> {
+        let path = paths::config_dir().join("default-settings.json");
+        if let Err(e) = fs::write(&path, Settings::default().to_json()) {
+            let text = self.look.i18n.f("notice.fs_error", &[("error", &e)]);
+            self.error(text);
+            return Task::none();
+        }
+        if let Some(i) = self.tabs.position(&path) {
+            self.reload(&path);
+            return self.update(Message::SelectTab(i));
+        }
+        self.open(path)
+    }
+
+    /// Ctrl+Shift+N starts another BIA, with nothing open.
     fn new_window(&mut self) -> Task<Message> {
         let started = std::env::current_exe().and_then(|exe| {
             std::process::Command::new(exe)
@@ -1648,7 +1915,7 @@ impl Bia {
         Task::none()
     }
 
-    /// The menu button: the commands you look for in a menu bar.
+    /// The menu button shows the commands you look for in a menu bar.
     fn main_menu(&mut self) {
         use crate::commands::Command;
         use ui::menu::Item;
@@ -1666,7 +1933,7 @@ impl Bia {
 
     // ── Files never saved ────────────────────────────────────────────────
 
-    /// Ctrl+N: an empty tab with no file yet. Saving asks where to put it.
+    /// Ctrl+N opens an empty tab with no file yet. Saving asks where to put it.
     fn new_untitled(&mut self) -> Task<Message> {
         let dir = paths::untitled_dir();
         let number = (1..)
@@ -1677,10 +1944,11 @@ impl Bia {
 
     fn open_untitled(&mut self, path: PathBuf, text: &str) -> Task<Message> {
         let Ok(doc) = Document::from_bytes(b"") else { return Task::none() };
-        let indent = Indent::for_file(&path, "", self.settings.tab_size);
+        let (indent, tab_width) =
+            Self::indent_for(&self.settings, &path, "Plain Text", "", Default::default());
         let mut buffer = Buffer::new(doc, "Plain Text".to_owned(), indent);
         buffer.editor.auto_close = self.settings.auto_close;
-        buffer.editor.tab_width = self.settings.tab_size;
+        buffer.editor.tab_width = tab_width;
         if !text.is_empty() {
             buffer.recover(text);
         }
@@ -1701,7 +1969,7 @@ impl Bia {
         }
     }
 
-    /// The name a tab shows: "Untitled 2", "Preview README.md" or the
+    /// The name a tab shows, like "Untitled 2", "Preview README.md" or the
     /// file's name.
     pub fn tab_name(&self, tab: &Tab) -> String {
         let t = &self.look.i18n;
@@ -1715,6 +1983,41 @@ impl Bia {
     }
 
     // ── Save as, save all, reopen ────────────────────────────────────────
+
+    /// With `format_on_save`, asks the language server to format the
+    /// active file and returns a task that saves it anyway if the server
+    /// takes too long. The save itself happens when the answer comes.
+    fn format_before_save(&mut self) -> Option<Task<Message>> {
+        let tab = self.tabs.active()?;
+        let buffer = tab.buffer()?;
+        let path = tab.path.clone();
+        if !self.settings.for_language(&buffer.editor.syntax).format_on_save
+            || !self.lsp.supports(&path, "documentFormattingProvider")
+        {
+            return None;
+        }
+        let (revision, indent) = (buffer.revision(), buffer.editor.indent);
+        self.sync_lsp();
+        if !self.lsp.format(&path, revision, indent.width, !indent.tabs) {
+            return None;
+        }
+        self.format_then_save.insert(path.clone());
+        Some(Task::perform(sleep(Duration::from_secs(2)), move |()| {
+            Message::FormatTimedOut(path.clone())
+        }))
+    }
+
+    /// The server formatted `path` (or never answered), so now it's saved.
+    fn save_after_format(&mut self, path: &Path) -> Task<Message> {
+        if !self.format_then_save.remove(path) {
+            return Task::none();
+        }
+        let Some(index) = self.tabs.position(path) else { return Task::none() };
+        self.save(index, false);
+        self.sync_lsp();
+        self.lsp.saved(path);
+        self.refresh_git()
+    }
 
     /// Asks where to save tab `index`, then saves it there, and closes it
     /// if `close`.
@@ -1793,7 +2096,17 @@ impl Bia {
         self.refresh_git()
     }
 
-    /// Ctrl+Shift+T: the tab closed last, at the line it was on.
+    /// Saving on its own, with `autosave`. It leaves out the cleanups
+    /// (trailing spaces, the last line break), since it happens while you type
+    /// and would take away the space you just typed.
+    fn autosave(&mut self) -> Task<Message> {
+        self.saving_quietly = true;
+        let task = self.save_all();
+        self.saving_quietly = false;
+        task
+    }
+
+    /// Ctrl+Shift+T reopens the tab closed last, at the line it was on.
     fn reopen_tab(&mut self) -> Task<Message> {
         while let Some((path, line, column)) = self.closed.pop() {
             if !path.is_file() || self.tabs.position(&path).is_some() {
@@ -1837,6 +2150,11 @@ impl Bia {
                     Message::Tree(TreeAction::CopyRelativePath(path.clone())),
                 ),
                 Item::action("tree.reveal", None, Message::Tree(TreeAction::Reveal(path))),
+                Item::action(
+                    "cmd.local_history",
+                    None,
+                    Message::Run(crate::commands::Command::LocalHistory),
+                ),
             ]);
         }
         items.extend([
@@ -2077,6 +2395,7 @@ impl Bia {
         for effect in effects {
             match effect {
                 Effect::Open { path, range, encoding } => {
+                    self.remember_place();
                     tasks.push(self.open(path));
                     self.center_seq += 1;
                     let seq = self.center_seq;
@@ -2121,6 +2440,7 @@ impl Bia {
                     let text = self.look.i18n.f("notice.lsp_error", &[("error", &error)]);
                     self.error(text);
                 }
+                Effect::Formatted(path) => tasks.push(self.save_after_format(&path)),
             }
         }
         tasks.push(self.schedule_lsp_sync());
@@ -2290,6 +2610,9 @@ impl Bia {
     }
 
     fn open(&mut self, path: PathBuf) -> Task<Message> {
+        if self.tabs.active().is_none_or(|t| t.path != path) {
+            self.remember_place();
+        }
         if let Some(index) = self.tabs.position(&path) {
             return self.update(Message::SelectTab(index));
         }
@@ -2297,10 +2620,13 @@ impl Bia {
         let body = match Document::load(&path) {
             Ok(doc) => {
                 let syntax = self.detect_syntax(&path, &doc.text);
-                let indent = Indent::for_file(&path, &doc.text, self.settings.tab_size);
+                let config = bia_core::editorconfig::for_file(&path);
+                let (indent, tab_width) =
+                    Self::indent_for(&self.settings, &path, &syntax, &doc.text, config);
                 let mut buffer = Buffer::new(doc, syntax, indent);
+                buffer.editorconfig = config;
                 buffer.editor.auto_close = self.settings.auto_close;
-                buffer.editor.tab_width = self.settings.tab_size;
+                buffer.editor.tab_width = tab_width;
                 self.recover(&path, &mut buffer);
                 Body::Text(buffer)
             }
@@ -2332,7 +2658,7 @@ impl Bia {
         Task::batch([reveal, self.focus_editor()].into_iter().chain(base))
     }
 
-    /// Ctrl+Shift+V on a Markdown file: opens its preview on the other side
+    /// Ctrl+Shift+V on a Markdown file opens its preview on the other side
     /// of the split, or closes it. On a preview tab, closes it.
     fn toggle_preview(&mut self) -> Task<Message> {
         let Some(tab) = self.tabs.active() else { return Task::none() };
@@ -2409,7 +2735,7 @@ impl Bia {
     }
 
     /// Keeps the explorer in step with the active tab.
-    /// Keeps the explorer in step with the active tab: opens the folders
+    /// Keeps the explorer in step with the active tab. It opens the folders
     /// down to it, selects it, and scrolls to it if it's out of sight.
     fn reveal_active(&mut self) -> Task<Message> {
         let Some(path) = self.tabs.active().map(|t| t.path.clone()) else { return Task::none() };
@@ -2541,6 +2867,26 @@ impl Bia {
         let name = tab.name();
         let path = tab.path.clone();
         let Some(buffer) = tab.buffer_mut() else { return false };
+        let own = self.settings.for_language(&buffer.editor.syntax);
+        let config = buffer.editorconfig;
+        let trim = config.trim_trailing_whitespace.unwrap_or(own.trim_trailing_whitespace_on_save);
+        let final_newline = config.insert_final_newline.unwrap_or(own.ensure_final_newline_on_save);
+        // The cleanups are edits like any other, and Ctrl+Z takes them back.
+        if (trim || final_newline) && !self.saving_quietly {
+            let text = buffer.text();
+            let mut edits: Vec<(Range<usize>, String)> = Vec::new();
+            if trim {
+                edits.extend(
+                    editing::trailing_whitespace(&text).into_iter().map(|r| (r, String::new())),
+                );
+            }
+            if final_newline && editing::needs_final_newline(&text) {
+                edits.push((text.len()..text.len(), buffer.line_ending.as_str().to_owned()));
+            }
+            if !edits.is_empty() {
+                buffer.replace_all(&edits);
+            }
+        }
 
         if buffer.is_dirty() {
             let on_disk = document::modified(&path);
@@ -2549,7 +2895,11 @@ impl Bia {
                 return false;
             }
             match document::write_atomic(&path, &buffer.encoded()) {
-                Ok(modified) => buffer.mark_saved(modified),
+                Ok(modified) => {
+                    buffer.mark_saved(modified);
+                    // Not worth an error, since the file itself is saved.
+                    let _ = bia_core::history::record(&paths::history_dir(), &path, &buffer.text());
+                }
                 Err(e) => {
                     let text =
                         self.look.i18n.f("notice.save_failed", &[("name", &name), ("error", &e)]);
@@ -2558,8 +2908,10 @@ impl Bia {
                 }
             }
         }
-        let text = self.look.i18n.f("notice.saved", &[("name", &name)]);
-        self.info(text);
+        if !self.saving_quietly {
+            let text = self.look.i18n.f("notice.saved", &[("name", &name)]);
+            self.info(text);
+        }
         self.after_save(&path);
         if let Some(tree) = &mut self.tree {
             tree.refresh();
@@ -2578,7 +2930,10 @@ impl Bia {
         }
         let json = fs::read_to_string(paths::settings_file()).unwrap_or_default();
         match Settings::from_json(&json) {
-            Ok(settings) => self.apply_settings(settings),
+            Ok(settings) => {
+                self.apply_settings(settings);
+                self.warn_unknown_keys();
+            }
             Err(e) => {
                 let text = self.settings_error_text(&SettingsError::Parse(e));
                 self.error(text);
@@ -2598,22 +2953,25 @@ impl Bia {
         }
         // Grammars may have been added or removed, and `tab_size` may have
         // changed: detect every file again.
-        let detected: Vec<(usize, String, Indent)> = self
+        let detected: Vec<(usize, String, Indent, usize)> = self
             .tabs
             .iter()
             .enumerate()
             .filter_map(|(i, t)| {
                 let text = t.buffer()?.text();
-                let indent = Indent::for_file(&t.path, &text, settings.tab_size);
-                Some((i, self.detect_syntax(&t.path, &text), indent))
+                let syntax = self.detect_syntax_with(&settings, &t.path, &text);
+                let config = t.buffer()?.editorconfig;
+                let (indent, tab_width) =
+                    Self::indent_for(&settings, &t.path, &syntax, &text, config);
+                Some((i, syntax, indent, tab_width))
             })
             .collect();
-        for (i, syntax, indent) in detected {
+        for (i, syntax, indent, tab_width) in detected {
             if let Some(buffer) = self.tabs.get_mut(i).and_then(Tab::buffer_mut) {
                 buffer.editor.syntax = syntax;
                 buffer.editor.indent = indent;
                 buffer.editor.auto_close = settings.auto_close;
-                buffer.editor.tab_width = settings.tab_size;
+                buffer.editor.tab_width = tab_width;
             }
         }
         self.font_size_setting = settings.font_size;
@@ -2659,6 +3017,7 @@ impl Bia {
     /// Moves the cursor to a 0-based line and column of the active file and
     /// has the editor center it.
     fn go_to_line(&mut self, line: usize, column: usize) -> Task<Message> {
+        self.remember_place();
         self.center_seq += 1;
         let seq = self.center_seq;
         let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
@@ -2698,7 +3057,7 @@ impl Bia {
         self.selected.clone().filter(|p| p != root && p.exists())
     }
 
-    /// The mouse came up after pressing a row: a click opens the file or
+    /// The mouse came up after pressing a row. A click opens the file or
     /// the folder, a drag onto another folder moves (or with Alt, copies)
     /// what was dragged there.
     fn tree_release(&mut self) -> Task<Message> {
@@ -2724,7 +3083,7 @@ impl Bia {
         Task::none()
     }
 
-    /// The menu for a right click in the sidebar: for the row it landed
+    /// The menu for a right click in the sidebar, for the row it landed
     /// on, or for the open folder.
     fn tree_menu(&mut self, at: iced::Point) {
         use ui::menu::Item;
@@ -2845,7 +3204,7 @@ impl Bia {
                 return iced::clipboard::write(text);
             }
             TreeAction::Reveal(path) => {
-                // Asking the file manager can take a moment: not on this thread.
+                // Asking the file manager can take a moment, so not on this thread.
                 return Task::perform(
                     async move { reveal_in_file_manager(&path).err().map(|e| e.to_string()) },
                     Message::Failed,
@@ -2918,7 +3277,7 @@ impl Bia {
         Task::none()
     }
 
-    /// `from` is now at `to`, renamed or moved: the tree, the tabs and the
+    /// `from` is now at `to`, renamed or moved, so the tree, the tabs and the
     /// backups follow it.
     fn moved(&mut self, from: &Path, to: &Path) {
         if let Some(tree) = &mut self.tree {
@@ -3270,10 +3629,16 @@ impl Bia {
         };
         search.running = true;
         let generation = search.generation;
+        let wanted = text::path_filter(&search.include, &search.exclude);
         Task::perform(
             async move {
-                let mut files: Vec<PathBuf> =
-                    tree::walk_files(&root, &hidden).take(MAX_FILES).collect();
+                let mut files: Vec<PathBuf> = tree::walk_files(&root, &hidden)
+                    .filter(|p| {
+                        let relative = p.strip_prefix(&root).unwrap_or(p);
+                        wanted(&relative.to_string_lossy().replace('\\', "/"))
+                    })
+                    .take(MAX_FILES)
+                    .collect();
                 files.sort();
                 Arc::new(search::search_files(files, &matcher, &open, MAX_HITS))
             },
@@ -3330,7 +3695,7 @@ impl Bia {
         Task::batch([operation::focus(PALETTE_ID), list])
     }
 
-    /// Ctrl+Shift+P: every command, found by typing part of its name.
+    /// Ctrl+Shift+P lists every command, found by typing part of its name.
     fn open_commands(&mut self) -> Task<Message> {
         let mode = PaletteMode::Commands { results: Vec::new() };
         self.palette = Some(Palette { mode, query: String::new(), selected: 0 });
@@ -3429,6 +3794,14 @@ impl Bia {
                 self.palette = None;
                 return self.open_root(folder, true);
             }
+            PaletteMode::History { path, versions } => {
+                let Some(version) = versions.get(palette.selected).cloned() else {
+                    return Task::none();
+                };
+                let path = path.clone();
+                self.palette = None;
+                return self.restore_version(&path, &version);
+            }
             _ => {}
         }
         if let PaletteMode::Rename { path, at } = &palette.mode {
@@ -3473,7 +3846,8 @@ impl Bia {
             }
             PaletteMode::Rename { .. }
             | PaletteMode::Commands { .. }
-            | PaletteMode::Recent { .. } => return Task::none(),
+            | PaletteMode::Recent { .. }
+            | PaletteMode::History { .. } => return Task::none(),
         };
         self.palette = None;
         self.go_to_line(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1))

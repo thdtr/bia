@@ -115,6 +115,9 @@ pub enum Effect {
     },
     Notice(String),
     Error(String),
+    /// The server answered a request to format `path`, with or without
+    /// changes (a save may be waiting for it).
+    Formatted(PathBuf),
 }
 
 #[derive(Default)]
@@ -532,10 +535,18 @@ impl Lsp {
                     }
                     Pending::Format { path, revision } => {
                         let edits = types::text_edits(&result);
-                        if edits.is_empty() {
-                            return Vec::new();
+                        let mut effects = Vec::new();
+                        if !edits.is_empty() {
+                            let edit = Effect::Edit {
+                                path: path.clone(),
+                                edits,
+                                encoding,
+                                revision: Some(revision),
+                            };
+                            effects.push(edit);
                         }
-                        vec![Effect::Edit { path, edits, encoding, revision: Some(revision) }]
+                        effects.push(Effect::Formatted(path));
+                        effects
                     }
                     Pending::Rename => {
                         let changes = types::workspace_edit(&result);

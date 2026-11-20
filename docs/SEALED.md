@@ -69,7 +69,7 @@ Some things are outside that:
   daemon and every transport (`protocol.allow=never`). Programs are separate from
   BIA, so what they do is up to them, but none of these calls asks git to use the
   network.
-* **Your file manager.** "Show in file manager" asks it to show the file: through
+* **Your file manager.** "Show in file manager" asks it to show the file, through
   D-Bus on Linux (`dbus-send`, or `xdg-open` on the folder when that fails), with
   `open -R` on macOS and `explorer /select` on Windows. That's all BIA asks it.
 * **The terminal.** It runs your shell, and what you run there is yours, network
