@@ -188,5 +188,6 @@
   "notice.restored": "Versão salva {when} restaurada. Ctrl+Z desfaz.",
   "notice.unknown_key": "O BIA não conhece a chave \"{key}\" do settings.json",
   "search.include": "Incluir, como src, *.rs",
-  "search.exclude": "Deixar de fora, como *.lock"
+  "search.exclude": "Deixar de fora, como *.lock",
+  "notice.bad_keybinding": "O BIA não entendeu o atalho \"{keys}\" do settings.json"
 }

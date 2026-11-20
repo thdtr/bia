@@ -61,6 +61,7 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Histórico local, com as últimas 30 versões salvas de cada arquivo para trazer de volta
 - Réguas, guias de indentação, espaços visíveis e destaque de `TODO` nos comentários
 - Segue o `.editorconfig` do projeto
+- Atalhos que você muda no `settings.json`
 - Buscar e substituir, com maiúsculas, palavra inteira e regex
 - Busca em todos os arquivos, pulando o que está no `.gitignore`
 - Abrir arquivo pelo nome, ir para uma linha

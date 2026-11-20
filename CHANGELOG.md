@@ -57,6 +57,9 @@ Notable changes to BIA are listed here. The format is based on
   `format_on_save`, `trim_trailing_whitespace_on_save`, `ensure_final_newline_on_save`,
   `restore_on_startup`, `file_types`, `terminal`, and `languages` for settings per
   language.
+- `keybindings` in settings.json gives any command or editor action the keys you
+  want, or turns a key off with `"none"`. Your keys win in the editor and the terminal
+  too, and the menus and the shortcuts list show them.
 - A key in settings.json that BIA doesn't know is pointed out, and "Default settings"
   shows every setting with its default value.
 

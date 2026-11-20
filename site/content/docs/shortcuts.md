@@ -92,4 +92,4 @@ In the terminal, <kbd>Ctrl+Shift+C</kbd> and <kbd>Ctrl+Shift+V</kbd> copy and pa
 
 On Mac keyboards without a <kbd>⌦</kbd> key, press <kbd>Fn+Delete</kbd>.
 
-Shortcuts cannot be changed. BIA reads them by key position, so they also work with non-Latin keyboard layouts.
+You can change any shortcut with `keybindings` in the settings, as [Settings](@/docs/settings.md#your-own-shortcuts) explains. BIA reads keys by position, so they also work with non-Latin keyboard layouts.

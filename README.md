@@ -59,6 +59,7 @@ The install commands above don't trigger this warning.
 - Local history, with the last 30 saved versions of each file to bring back
 - Rulers, indent guides, visible spaces, and `TODO` marks in comments
 - Follows the project's `.editorconfig`
+- Shortcuts you can change in `settings.json`
 - Find and replace, with match case, whole word and regex
 - Find in files, skipping what `.gitignore` lists
 - Open a file by name, go to a line

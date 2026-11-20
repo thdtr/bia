@@ -94,6 +94,7 @@ A setting that is omitted keeps its default value.
 | `file_types` | `{}` | Which language a file is, by name or `*.ext`, when BIA guesses wrong, such as `{ "*.env.local": "Bourne Again Shell (bash)" }`. The language name is the one in the status bar. |
 | `languages` | `{}` | Settings for one language, by its name in the status bar. See below. |
 | `terminal` | `{}` | The shell and font of the terminal. See below. |
+| `keybindings` | `{}` | Your own shortcuts. See below. |
 | `language_servers` | `{}` | The language server for each language, as a command: program, then arguments. The key is the language name shown in the status bar. See [Language servers](@/docs/language-servers.md). |
 
 The default value of `hidden` is `[".git", ".hg", ".svn", ".DS_Store", "Thumbs.db", "node_modules", "target"]`.
@@ -122,6 +123,24 @@ Values outside the accepted range are adjusted to the nearest limit. Fira Sans a
 ```
 
 `shell` is the program and its arguments. Left out, the terminal runs your login shell, in the editor's font and size.
+
+## Your own shortcuts
+
+`keybindings` gives a key to a command, or takes one away with `"none"`. Your keys come first, in the editor and in the terminal too, and the menu, the command list and the shortcuts list show them.
+
+```json
+"keybindings": {
+  "Ctrl+Shift+D": "duplicate_lines_down",
+  "Ctrl+K": "delete_lines",
+  "Ctrl+Shift+L": "none"
+}
+```
+
+Keys are written like `Ctrl+Shift+D`, `Alt+Up` or `F5`. `Ctrl` is the key BIA's shortcuts use, which is <kbd>⌘</kbd> on a Mac. Named keys are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `enter`, `tab`, `escape`, `backspace`, `delete`, `insert`, `space` and `f1` to `f12`.
+
+The commands are `new_file`, `new_window`, `open_file`, `open_folder`, `open_recent`, `save`, `save_as`, `save_all`, `close_tab`, `reopen_tab`, `close_folder`, `quick_open`, `go_to_line`, `find`, `replace`, `find_in_files`, `sidebar`, `terminal`, `new_terminal`, `split`, `preview`, `zoom_in`, `zoom_out`, `zoom_reset`, `collapse_tree`, `settings`, `commands`, `shortcuts`, `about`, `quit`, `back`, `forward`, `local_history`, `default_settings`.
+
+The editor actions are `comment`, `move_lines_up`, `move_lines_down`, `duplicate_lines_up`, `duplicate_lines_down`, `delete_lines`, `select_line`, `select_next`, `select_all_occurrences`, `select_all`, `add_cursor_above`, `add_cursor_below`, `indent`, `outdent`, `go_to_definition`, `complete`, `format`, `rename_symbol`, `next_problem`, `previous_problem`.
 
 ## .editorconfig
 

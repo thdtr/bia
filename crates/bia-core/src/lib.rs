@@ -23,6 +23,7 @@ pub mod git;
 pub mod history;
 pub mod i18n;
 pub mod indent;
+pub mod keybind;
 pub mod language;
 pub mod lsp;
 pub mod paths;

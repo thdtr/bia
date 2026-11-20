@@ -334,10 +334,230 @@ fn is_format(key: &Key, physical: Physical, mods: Modifiers) -> bool {
         && key.to_latin(physical).is_some_and(|c| c.eq_ignore_ascii_case(&'f'))
 }
 
+// ── Your own shortcuts ───────────────────────────────────────────────────
+
+use bia_core::keybind::Combo;
+
+/// What a key in `keybindings` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    App(crate::commands::Command),
+    Editor(Command),
+    /// `"none"`: the key does nothing, not even what it did before.
+    Nothing,
+}
+
+/// The editor actions `keybindings` can name, with those names.
+const EDITOR_ACTIONS: [(&str, Command); 20] = [
+    ("comment", Command::ToggleComment),
+    ("move_lines_up", Command::MoveLines { up: true }),
+    ("move_lines_down", Command::MoveLines { up: false }),
+    ("duplicate_lines_up", Command::DuplicateLines { down: false }),
+    ("duplicate_lines_down", Command::DuplicateLines { down: true }),
+    ("delete_lines", Command::DeleteLines),
+    ("select_line", Command::SelectLines),
+    ("select_next", Command::SelectNext),
+    ("select_all_occurrences", Command::SelectAllOccurrences),
+    ("select_all", Command::SelectAll),
+    ("add_cursor_above", Command::AddCursor { up: true }),
+    ("add_cursor_below", Command::AddCursor { up: false }),
+    ("indent", Command::Indent),
+    ("outdent", Command::Outdent),
+    ("go_to_definition", Command::GoToDefinition),
+    ("complete", Command::Complete),
+    ("format", Command::Format),
+    ("rename_symbol", Command::RenameSymbol),
+    ("next_problem", Command::NextProblem { back: false }),
+    ("previous_problem", Command::NextProblem { back: true }),
+];
+
+/// The action a name in `keybindings` stands for.
+pub fn action(name: &str) -> Option<Action> {
+    let name = name.trim();
+    if name == "none" {
+        return Some(Action::Nothing);
+    }
+    if let Some(command) = crate::commands::Command::ALL.into_iter().find(|c| c.id() == name) {
+        return Some(Action::App(command));
+    }
+    EDITOR_ACTIONS.iter().find(|(n, _)| *n == name).map(|(_, c)| Action::Editor(*c))
+}
+
+/// Every name `keybindings` takes.
+#[cfg(test)]
+fn action_names() -> Vec<&'static str> {
+    crate::commands::Command::ALL
+        .into_iter()
+        .map(crate::commands::Command::id)
+        .chain(EDITOR_ACTIONS.iter().map(|(n, _)| *n))
+        .collect()
+}
+
+/// The keys of `keybindings`, read once when the settings load.
+#[derive(Debug, Default)]
+pub struct Bindings {
+    list: Vec<(Combo, Action, String)>,
+}
+
+pub static NO_BINDINGS: Bindings = Bindings { list: Vec::new() };
+
+impl Bindings {
+    /// Reads `keybindings`. Entries it can't read come back by their keys,
+    /// to be pointed out.
+    pub fn new(map: &std::collections::BTreeMap<String, String>) -> (Self, Vec<String>) {
+        let mut list = Vec::new();
+        let mut errors = Vec::new();
+        for (keys, name) in map {
+            match (Combo::parse(keys), action(name)) {
+                (Some(combo), Some(action)) => list.push((combo, action, keys.trim().to_owned())),
+                _ => errors.push(keys.clone()),
+            }
+        }
+        (Self { list }, errors)
+    }
+
+    /// What the key pressed is bound to, if you bound it.
+    pub fn find(&self, key: &Key, physical: Physical, mods: Modifiers) -> Option<Action> {
+        if self.list.is_empty() {
+            return None;
+        }
+        let pressed = combo_of(key, physical, mods)?;
+        self.list.iter().find(|(c, ..)| *c == pressed).map(|(_, a, _)| *a)
+    }
+
+    /// The keys shown next to a command: yours if you bound some, else
+    /// BIA's own, unless you gave those to something else.
+    pub fn keys_for(&self, command: crate::commands::Command) -> Option<String> {
+        if let Some((.., keys)) = self.list.iter().find(|(_, a, _)| *a == Action::App(command)) {
+            return Some(keys.clone());
+        }
+        let default = command.keys()?;
+        let taken = Combo::parse(default).is_some_and(|d| self.list.iter().any(|(c, ..)| *c == d));
+        (!taken).then(|| default.to_owned())
+    }
+}
+
+/// The key pressed, as `keybindings` writes it.
+fn combo_of(key: &Key, physical: Physical, mods: Modifiers) -> Option<Combo> {
+    use iced::keyboard::key::Code;
+    let name = match key {
+        Key::Named(named) => match named {
+            Named::ArrowUp => "up",
+            Named::ArrowDown => "down",
+            Named::ArrowLeft => "left",
+            Named::ArrowRight => "right",
+            Named::Home => "home",
+            Named::End => "end",
+            Named::PageUp => "pageup",
+            Named::PageDown => "pagedown",
+            Named::Enter => "enter",
+            Named::Tab => "tab",
+            Named::Escape => "escape",
+            Named::Backspace => "backspace",
+            Named::Delete => "delete",
+            Named::Insert => "insert",
+            Named::Space => "space",
+            Named::F1 => "f1",
+            Named::F2 => "f2",
+            Named::F3 => "f3",
+            Named::F4 => "f4",
+            Named::F5 => "f5",
+            Named::F6 => "f6",
+            Named::F7 => "f7",
+            Named::F8 => "f8",
+            Named::F9 => "f9",
+            Named::F10 => "f10",
+            Named::F11 => "f11",
+            Named::F12 => "f12",
+            Named::ContextMenu => "menu",
+            _ => return None,
+        }
+        .to_owned(),
+        _ => {
+            // With Shift, `1` types `!` and `` ` `` types `~`: the key is the
+            // one written without Shift.
+            let base = match physical {
+                Physical::Code(code) if mods.shift() => match code {
+                    Code::Backquote => Some('`'),
+                    Code::Minus => Some('-'),
+                    Code::Equal => Some('='),
+                    Code::BracketLeft => Some('['),
+                    Code::BracketRight => Some(']'),
+                    Code::Backslash => Some('\\'),
+                    Code::Semicolon => Some(';'),
+                    Code::Quote => Some('\''),
+                    Code::Comma => Some(','),
+                    Code::Period => Some('.'),
+                    Code::Slash => Some('/'),
+                    Code::Digit0 => Some('0'),
+                    Code::Digit1 => Some('1'),
+                    Code::Digit2 => Some('2'),
+                    Code::Digit3 => Some('3'),
+                    Code::Digit4 => Some('4'),
+                    Code::Digit5 => Some('5'),
+                    Code::Digit6 => Some('6'),
+                    Code::Digit7 => Some('7'),
+                    Code::Digit8 => Some('8'),
+                    Code::Digit9 => Some('9'),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let c = base.or_else(|| key.to_latin(physical))?;
+            c.to_lowercase().to_string()
+        }
+    };
+    Some(Combo { ctrl: mods.command(), alt: mods.alt(), shift: mods.shift(), key: name })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use iced::keyboard::key::Code;
+
+    #[test]
+    fn your_keys_come_first() {
+        let map = std::collections::BTreeMap::from([
+            ("Ctrl+Shift+D".to_owned(), "duplicate_lines_down".to_owned()),
+            ("Ctrl+S".to_owned(), "none".to_owned()),
+            ("Ctrl+Shift+`".to_owned(), "save".to_owned()),
+            ("Ctrl+Nope".to_owned(), "save".to_owned()),
+            ("F9".to_owned(), "fly".to_owned()),
+        ]);
+        let (bindings, errors) = Bindings::new(&map);
+        assert_eq!(errors, ["Ctrl+Nope", "F9"]);
+        let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
+        let d = bindings.find(&Key::Character("D".into()), Physical::Code(Code::KeyD), cmd_shift);
+        assert_eq!(d, Some(Action::Editor(Command::DuplicateLines { down: true })));
+        let s = bindings.find(
+            &Key::Character("s".into()),
+            Physical::Code(Code::KeyS),
+            Modifiers::COMMAND,
+        );
+        assert_eq!(s, Some(Action::Nothing));
+        // Shift+` types ~, but it's still the ` key.
+        let tilde =
+            bindings.find(&Key::Character("~".into()), Physical::Code(Code::Backquote), cmd_shift);
+        assert_eq!(tilde, Some(Action::App(crate::commands::Command::Save)));
+        // Save shows the keys you gave it, and New terminal lost its own.
+        assert_eq!(
+            bindings.keys_for(crate::commands::Command::Save).as_deref(),
+            Some("Ctrl+Shift+`")
+        );
+        assert_eq!(bindings.keys_for(crate::commands::Command::NewTerminal), None);
+        assert!(action_names().contains(&"select_next"));
+    }
+
+    #[test]
+    fn the_settings_page_lists_every_action() {
+        let en = include_str!("../../../site/content/docs/settings.md");
+        let pt = include_str!("../../../site/content/docs/settings.pt-br.md");
+        for name in action_names() {
+            let quoted = format!("`{name}`");
+            assert!(en.contains(&quoted), "settings.md doesn't list {name}");
+            assert!(pt.contains(&quoted), "settings.pt-br.md doesn't list {name}");
+        }
+    }
 
     fn press(c: &str, code: Code, mods: Modifiers) -> Option<Shortcut> {
         shortcut(&Key::Character(c.into()), Physical::Code(code), mods)

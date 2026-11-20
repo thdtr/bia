@@ -72,8 +72,8 @@ pub fn shortcuts(app: &Bia) -> Element<'_, Message> {
     };
     let mut list = Column::new().spacing(6).push(heading(app, t.t("keys.app")));
     for command in Command::ALL {
-        if let Some(keys) = command.keys() {
-            list = list.push(line(t.t(command.label()).to_owned(), keys));
+        if let Some(keys) = app.bindings.keys_for(command) {
+            list = list.push(line(t.t(command.label()).to_owned(), &keys));
         }
     }
     list = list.push(space().height(10)).push(heading(app, t.t("keys.editor")));

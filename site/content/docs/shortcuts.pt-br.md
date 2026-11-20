@@ -92,4 +92,4 @@ No terminal, <kbd>Ctrl+Shift+C</kbd> e <kbd>Ctrl+Shift+V</kbd> copiam e colam, e
 
 Em teclados Mac sem a tecla <kbd>⌦</kbd>, use <kbd>Fn+Delete</kbd>.
 
-Os atalhos não podem ser alterados. O BIA os identifica pela posição das teclas, então eles também funcionam em layouts de teclado não latinos.
+Você pode mudar qualquer atalho com `keybindings` nas configurações, como explica a página de [Configurações](@/docs/settings.pt-br.md#seus-proprios-atalhos). O BIA identifica as teclas pela posição, então os atalhos também funcionam em layouts de teclado não latinos.

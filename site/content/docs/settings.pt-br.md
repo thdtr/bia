@@ -94,6 +94,7 @@ Uma configuração omitida mantém o valor padrão.
 | `file_types` | `{}` | Qual é a linguagem de um arquivo, pelo nome ou `*.ext`, quando o BIA erra, como `{ "*.env.local": "Bourne Again Shell (bash)" }`. O nome da linguagem é o da barra de status. |
 | `languages` | `{}` | Configurações de uma linguagem só, pelo nome que aparece na barra de status. Veja abaixo. |
 | `terminal` | `{}` | O shell e a fonte do terminal. Veja abaixo. |
+| `keybindings` | `{}` | Seus próprios atalhos. Veja abaixo. |
 | `language_servers` | `{}` | O servidor de linguagem de cada linguagem, como um comando: o programa e depois os argumentos. A chave é o nome da linguagem que aparece na barra de status. Veja [Servidores de linguagem](@/docs/language-servers.pt-br.md). |
 
 O valor padrão de `hidden` é `[".git", ".hg", ".svn", ".DS_Store", "Thumbs.db", "node_modules", "target"]`.
@@ -122,6 +123,24 @@ Valores fora do intervalo aceito são ajustados para o limite mais próximo. As 
 ```
 
 `shell` é o programa e os argumentos dele. Sem ele, o terminal roda o seu shell de login, com a fonte e o tamanho do editor.
+
+## Seus próprios atalhos
+
+`keybindings` dá uma tecla a um comando, ou tira uma tecla com `"none"`. As suas teclas vêm primeiro, inclusive no editor e no terminal, e o menu, a lista de comandos e a lista de atalhos mostram as teclas que você escolheu.
+
+```json
+"keybindings": {
+  "Ctrl+Shift+D": "duplicate_lines_down",
+  "Ctrl+K": "delete_lines",
+  "Ctrl+Shift+L": "none"
+}
+```
+
+As teclas são escritas como `Ctrl+Shift+D`, `Alt+Up` ou `F5`. `Ctrl` é a tecla que os atalhos do BIA usam, que no Mac é <kbd>⌘</kbd>. As teclas com nome são `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `enter`, `tab`, `escape`, `backspace`, `delete`, `insert`, `space` e de `f1` a `f12`.
+
+Os comandos são `new_file`, `new_window`, `open_file`, `open_folder`, `open_recent`, `save`, `save_as`, `save_all`, `close_tab`, `reopen_tab`, `close_folder`, `quick_open`, `go_to_line`, `find`, `replace`, `find_in_files`, `sidebar`, `terminal`, `new_terminal`, `split`, `preview`, `zoom_in`, `zoom_out`, `zoom_reset`, `collapse_tree`, `settings`, `commands`, `shortcuts`, `about`, `quit`, `back`, `forward`, `local_history`, `default_settings`.
+
+As ações do editor são `comment`, `move_lines_up`, `move_lines_down`, `duplicate_lines_up`, `duplicate_lines_down`, `delete_lines`, `select_line`, `select_next`, `select_all_occurrences`, `select_all`, `add_cursor_above`, `add_cursor_below`, `indent`, `outdent`, `go_to_definition`, `complete`, `format`, `rename_symbol`, `next_problem`, `previous_problem`.
 
 ## .editorconfig
 

@@ -155,6 +155,9 @@ pub enum Message {
     Maximized(bool),
     /// A file or folder dropped on the window.
     FileDropped(PathBuf),
+    /// A key no editor, terminal or field took: one of your `keybindings`,
+    /// or one of BIA's shortcuts.
+    Key(keyboard::Key, keyboard::key::Physical, keyboard::Modifiers),
     /// A command from the palette, the menu or a button.
     Run(crate::commands::Command),
     /// Where "Save as" should write tab `.0` (`None`: cancelled), and
@@ -526,6 +529,8 @@ impl Look {
 pub struct Bia {
     pub settings: Settings,
     pub look: Look,
+    /// `keybindings`, read.
+    pub bindings: keys::Bindings,
     pub tree: Option<FileTree>,
     /// Where the file tree is scrolled and how tall it is, to build only
     /// the rows in sight.
@@ -620,6 +625,7 @@ impl Bia {
             follow: Follow { seen: None, edited_at: Instant::now(), scheduled: false },
             center_seq: 0,
             font_size_setting: settings.font_size,
+            bindings: keys::Bindings::default(),
             settings,
             look,
             tree: None,
@@ -674,6 +680,7 @@ impl Bia {
             app.error(e);
         }
         app.warn_unknown_keys();
+        app.read_bindings();
 
         let mut tasks = Vec::new();
         // With nothing on the command line, BIA reopens the last folder and
@@ -757,10 +764,18 @@ impl Bia {
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key, physical_key, modifiers, ..
             }) => {
-                let shortcut = keys::shortcut(&key, physical_key, modifiers)?;
                 // Text fields swallow Escape, but Escape must always close things.
-                let free = status == event::Status::Ignored || shortcut == Shortcut::Escape;
-                free.then_some(Message::Shortcut(shortcut))
+                if status == event::Status::Captured {
+                    let escape =
+                        keys::shortcut(&key, physical_key, modifiers) == Some(Shortcut::Escape);
+                    return escape.then_some(Message::Shortcut(Shortcut::Escape));
+                }
+                // Plain typing is nobody's shortcut.
+                let plain = !matches!(key, keyboard::Key::Named(_))
+                    && !modifiers.command()
+                    && !modifiers.alt()
+                    && !modifiers.control();
+                (!plain).then_some(Message::Key(key, physical_key, modifiers))
             }
             _ => None,
         });
@@ -868,6 +883,16 @@ impl Bia {
     fn expire_notice(&mut self) {
         if self.notice.as_ref().is_some_and(|n| n.at.elapsed() > NOTICE_TTL) {
             self.notice = None;
+        }
+    }
+
+    /// Reads `keybindings`, and points out an entry it can't use.
+    fn read_bindings(&mut self) {
+        let (bindings, errors) = keys::Bindings::new(&self.settings.keybindings);
+        self.bindings = bindings;
+        if let Some(keys) = errors.first() {
+            let text = self.look.i18n.f("notice.bad_keybinding", &[("keys", keys)]);
+            self.error(text);
         }
     }
 
@@ -1324,6 +1349,17 @@ impl Bia {
             }
 
             Message::Shortcut(shortcut) => return self.shortcut(shortcut),
+            Message::Key(key, physical, mods) => {
+                return match self.bindings.find(&key, physical, mods) {
+                    Some(keys::Action::App(command)) => self.run(command),
+                    // Editor actions happen in the editor, which has its own copy.
+                    Some(keys::Action::Editor(_) | keys::Action::Nothing) => Task::none(),
+                    None => match keys::shortcut(&key, physical, mods) {
+                        Some(shortcut) => self.shortcut(shortcut),
+                        None => Task::none(),
+                    },
+                };
+            }
             Message::WindowFocused => {
                 self.on_focus();
                 // Commits and checkouts happen in other windows.
@@ -1921,7 +1957,7 @@ impl Bia {
         let items = Command::MENU
             .into_iter()
             .map(|c| match c {
-                Some(c) => Item::action(c.label(), c.keys(), Message::Run(c)),
+                Some(c) => Item::action_keys(c.label(), self.bindings.keys_for(c), Message::Run(c)),
                 None => Item::Separator,
             })
             .collect();
@@ -2938,6 +2974,7 @@ impl Bia {
             Ok(settings) => {
                 self.apply_settings(settings);
                 self.warn_unknown_keys();
+                self.read_bindings();
             }
             Err(e) => {
                 let text = self.settings_error_text(&SettingsError::Parse(e));

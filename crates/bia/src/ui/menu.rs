@@ -31,7 +31,7 @@ pub enum Item {
     Action {
         /// Translation key of its name.
         label: &'static str,
-        keys: Option<&'static str>,
+        keys: Option<String>,
         /// `None`: shown, but greyed out.
         message: Option<Message>,
         danger: bool,
@@ -41,11 +41,16 @@ pub enum Item {
 
 impl Item {
     pub fn action(label: &'static str, keys: Option<&'static str>, message: Message) -> Self {
+        Self::action_keys(label, keys.map(str::to_owned), message)
+    }
+
+    /// An action whose keys may be your own (see `keybindings`).
+    pub fn action_keys(label: &'static str, keys: Option<String>, message: Message) -> Self {
         Item::Action { label, keys, message: Some(message), danger: false }
     }
 
     pub fn danger(label: &'static str, keys: Option<&'static str>, message: Message) -> Self {
-        Item::Action { label, keys, message: Some(message), danger: true }
+        Item::Action { label, keys: keys.map(str::to_owned), message: Some(message), danger: true }
     }
 }
 
@@ -72,7 +77,7 @@ pub fn view<'a>(app: &'a Bia, menu: &'a Menu) -> Element<'a, Message> {
                     row![label(app, t.t(key).to_owned()).color(color), space::horizontal()]
                         .align_y(Alignment::Center);
                 if let Some(keys) = keys {
-                    line = line.push(hint(app, keys::label(keys)));
+                    line = line.push(hint(app, keys::label(keys.as_str())));
                 }
                 button(line)
                     .width(Fill)

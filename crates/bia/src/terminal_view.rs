@@ -44,6 +44,7 @@ pub struct TerminalView<'a, Message> {
     colors: Colors,
     on_resize: Box<dyn Fn(Size) -> Message + 'a>,
     on_open: Box<dyn Fn(String) -> Message + 'a>,
+    bindings: &'a crate::keys::Bindings,
 }
 
 impl<'a, Message> TerminalView<'a, Message> {
@@ -64,7 +65,15 @@ impl<'a, Message> TerminalView<'a, Message> {
             colors,
             on_resize: Box::new(on_resize),
             on_open: Box::new(on_open),
+            bindings: &crate::keys::NO_BINDINGS,
         }
+    }
+
+    /// Your `keybindings`. Keys bound to a command go to BIA, not to the
+    /// program in the terminal.
+    pub fn bindings(mut self, bindings: &'a crate::keys::Bindings) -> Self {
+        self.bindings = bindings;
+        self
     }
 
     /// The file location under `point`: its screen row, its columns and
@@ -248,7 +257,12 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {
                 text,
                 ..
             }) if state.focused => {
-                if is_app_shortcut(key, *physical_key, *modifiers) {
+                let yours = self.bindings.find(key, *physical_key, *modifiers);
+                let for_app = matches!(
+                    yours,
+                    Some(crate::keys::Action::App(_) | crate::keys::Action::Nothing)
+                );
+                if for_app || is_app_shortcut(key, *physical_key, *modifiers) {
                     return;
                 }
                 let latin = key.to_latin(*physical_key).map(|c| c.to_ascii_lowercase());

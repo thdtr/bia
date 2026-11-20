@@ -147,6 +147,11 @@ impl Command {
         }
     }
 
+    /// The name `keybindings` uses: `save`, `new_terminal`…
+    pub fn id(self) -> &'static str {
+        self.label().trim_start_matches("cmd.")
+    }
+
     /// Its keys, written for Linux and Windows (`keys::label` turns them
     /// into the Mac's).
     pub fn keys(self) -> Option<&'static str> {

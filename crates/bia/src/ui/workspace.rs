@@ -301,6 +301,7 @@ fn editor_area<'a>(
         }))
         .git(buffer.git.marks())
         .wrap(app.wrap_for(&buffer.editor.syntax))
+        .bindings(&app.bindings)
         .look(crate::code_view::Look {
             rulers: app.rulers_for(&buffer.editor.syntax),
             indent_guides: app.settings.indent_guides,

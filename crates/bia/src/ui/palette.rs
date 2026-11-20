@@ -77,8 +77,8 @@ pub fn view<'a>(app: &'a Bia, palette: &'a Palette) -> Element<'a, Message> {
                 let mut line =
                     row![label(app, t.t(command.label()).to_owned()), space::horizontal()]
                         .align_y(Alignment::Center);
-                if let Some(keys) = command.keys() {
-                    line = line.push(hint(app, crate::keys::label(keys)));
+                if let Some(keys) = app.bindings.keys_for(*command) {
+                    line = line.push(hint(app, crate::keys::label(&keys)));
                 }
                 button(line)
                     .width(Fill)

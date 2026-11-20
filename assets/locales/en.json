@@ -188,5 +188,6 @@
   "notice.restored": "Restored the version saved {when}. Ctrl+Z undoes it.",
   "notice.unknown_key": "BIA doesn't know the key \"{key}\" in settings.json",
   "search.include": "Include, like src, *.rs",
-  "search.exclude": "Leave out, like *.lock"
+  "search.exclude": "Leave out, like *.lock",
+  "notice.bad_keybinding": "BIA didn't understand the shortcut \"{keys}\" in settings.json"
 }

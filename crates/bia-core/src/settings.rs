@@ -71,6 +71,9 @@ pub struct Settings {
     /// Settings for one language, by its name as the status bar shows it.
     pub languages: BTreeMap<String, LanguageSettings>,
     pub terminal: TerminalSettings,
+    /// Your own shortcuts: keys, then the command or editor action they
+    /// run, or `"none"` to turn a key off. `{ "Ctrl+Shift+D": "duplicate_lines_down" }`.
+    pub keybindings: BTreeMap<String, String>,
     /// Language servers, by language name as the status bar shows it:
     /// `{ "Rust": ["rust-analyzer"] }`. None by default: BIA never starts a
     /// program you didn't name here.
@@ -109,6 +112,7 @@ impl Default for Settings {
             file_types: BTreeMap::new(),
             languages: BTreeMap::new(),
             terminal: TerminalSettings::default(),
+            keybindings: BTreeMap::new(),
             language_servers: BTreeMap::new(),
         }
     }
@@ -214,7 +218,7 @@ pub struct ForLanguage {
 
 /// Every key BIA reads, to point out the ones it doesn't know (a typo,
 /// usually).
-const KEYS: [&str; 28] = [
+const KEYS: [&str; 29] = [
     "font_family",
     "font_size",
     "ui_font_family",
@@ -242,6 +246,7 @@ const KEYS: [&str; 28] = [
     "file_types",
     "languages",
     "terminal",
+    "keybindings",
     "language_servers",
 ];
 

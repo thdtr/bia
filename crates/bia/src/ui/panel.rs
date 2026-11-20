@@ -36,7 +36,8 @@ pub fn terminal(app: &Bia) -> Option<Element<'_, Message>> {
         c,
         |size| Message::TermResize(active.id, size),
         |location| Message::TermOpen(active.id, location),
-    );
+    )
+    .bindings(&app.bindings);
 
     let tabs = app.terminals.list.iter().map(|t| tab(app, t, t.id == active.id));
     let header = row![

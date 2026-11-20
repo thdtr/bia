@@ -161,6 +161,7 @@ pub struct CodeView<'a, Message> {
     colors: Colors,
     wrap: Wrap,
     look: Look<'a>,
+    bindings: &'a keys::Bindings,
     /// Which file this is, so switching tabs restores its own scroll.
     key: u64,
     scroll: Vector,
@@ -200,6 +201,7 @@ impl<'a, Message> CodeView<'a, Message> {
             colors,
             wrap: Wrap::Off,
             look: Look::default(),
+            bindings: &keys::NO_BINDINGS,
             key: 0,
             scroll: Vector::ZERO,
             center: 0,
@@ -244,6 +246,12 @@ impl<'a, Message> CodeView<'a, Message> {
 
     pub fn wrap(mut self, wrap: Wrap) -> Self {
         self.wrap = wrap;
+        self
+    }
+
+    /// Your `keybindings`, which win over the editor's own keys.
+    pub fn bindings(mut self, bindings: &'a keys::Bindings) -> Self {
+        self.bindings = bindings;
         self
     }
 
@@ -846,6 +854,16 @@ impl<Message> Widget<Message, Theme, Renderer> for CodeView<'_, Message> {
             }) => {
                 let Some(focus) = &mut state.focus else { return };
                 focus.since = Instant::now();
+                // Your keybindings come before the editor's own keys. A key
+                // bound to a command is left for the app.
+                match self.bindings.find(key, *physical_key, *modifiers) {
+                    Some(keys::Action::Editor(command)) => {
+                        publish(shell, Input::Command(command));
+                        return;
+                    }
+                    Some(keys::Action::App(_) | keys::Action::Nothing) => return,
+                    None => {}
+                }
                 if self.completion.is_some() {
                     let pick = match key {
                         keyboard::Key::Named(keyboard::key::Named::ArrowUp) => Some(Pick::Up),
