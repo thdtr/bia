@@ -48,6 +48,7 @@ pub const EDITOR_ID: &str = "bia-editor";
 pub const EDITOR_RIGHT_ID: &str = "bia-editor-right";
 pub const PROMPT_ID: &str = "bia-prompt";
 pub const TREE_ID: &str = "bia-tree";
+pub const PREVIEW_ID: &str = "bia-preview";
 pub const FIND_ID: &str = "bia-find";
 pub const REPLACE_ID: &str = "bia-replace";
 pub const PALETTE_ID: &str = "bia-palette";
@@ -2724,8 +2725,8 @@ impl Bia {
     /// opens web addresses itself (see docs/SEALED.md), so those are
     /// copied for you to open wherever you like.
     fn link_clicked(&mut self, url: String) -> Task<Message> {
-        if url.starts_with('#') {
-            return Task::none();
+        if let Some(anchor) = text::link_anchor(&url) {
+            return ui::scroll_to_heading(&anchor);
         }
         let is_web = url.contains("://") || url.starts_with("mailto:");
         if !is_web {

@@ -230,9 +230,45 @@ pub fn path_filter(include: &str, exclude: &str) -> impl Fn(&str) -> bool + Send
     }
 }
 
+/// The anchor GitHub gives a heading, which is what `[link](#anchor)`
+/// points to. It's lower case, spaces become `-`, and punctuation goes
+/// away, while letters with accents stay ("Configurações" →
+/// `configurações`).
+pub fn heading_anchor(title: &str) -> String {
+    title
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter_map(|c| match c {
+            ' ' => Some('-'),
+            '-' | '_' => Some(c),
+            c if c.is_alphanumeric() => Some(c),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A link's `#anchor`, without the `#` and with `%C3%A7` and the like
+/// turned back into letters.
+pub fn link_anchor(link: &str) -> Option<String> {
+    let anchor = link.strip_prefix('#')?;
+    Some(percent_decode(anchor).unwrap_or_else(|| anchor.to_owned()).to_lowercase())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heading_anchors() {
+        assert_eq!(heading_anchor("Find in files"), "find-in-files");
+        assert_eq!(heading_anchor("Configurações"), "configurações");
+        assert_eq!(heading_anchor("What's new? (0.5)"), "whats-new-05");
+        assert_eq!(heading_anchor(".editorconfig"), "editorconfig");
+        assert_eq!(link_anchor("#configura%C3%A7%C3%B5es").as_deref(), Some("configurações"));
+        assert_eq!(link_anchor("#Install").as_deref(), Some("install"));
+        assert_eq!(link_anchor("notes.md"), None);
+    }
 
     #[test]
     fn search_filters() {

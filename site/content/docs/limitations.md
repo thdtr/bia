@@ -11,7 +11,7 @@ weight = 9
 - **Find in files does not replace.** Each result opens its file with the match selected, where <kbd>Ctrl+H</kbd> works.
 - **Highlighting far into a long file can be wrong.** Jumping more than 5,000 lines past what was already highlighted starts highlighting a little above the screen, which is wrong only inside a comment or string longer than that.
 - **Language servers get the whole file after each pause in typing.** This is simple and reliable, but slower than sending only the changes on very large files.
-- **The Markdown preview can't jump to a heading or select text.** Links like `#install` do nothing, and text in the preview can't be copied, since the toolkit BIA uses can't do either yet.
+- **Text in the Markdown preview can't be selected.** The toolkit BIA uses can't do it yet, so copy from the file's own tab.
 - **On Windows, closing a busy terminal doesn't warn you.** Windows doesn't tell whether a program is running in front of the shell, so BIA can't ask first.
 - **Input methods are untested.** Composed characters and input methods for languages such as Japanese should work, but haven't been tested yet.
 

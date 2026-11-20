@@ -20,7 +20,8 @@ Notable changes to BIA are listed here. The format is based on
 - A button to hide the sidebar, and one in the status bar to bring it back.
 - Drag the edge of the sidebar, or the top of the terminal panel, to resize them. BIA
   remembers the sizes.
-- Links to other files in the Markdown preview open them in BIA.
+- Links in the Markdown preview work. One to a heading, like `#install`, scrolls the
+  preview there, and one to another file opens it in BIA.
 - A right click in the file tree opens a menu to create, cut, copy, paste, duplicate,
   rename and trash files, copy their path, show them in your file manager or open a
   terminal in their folder.

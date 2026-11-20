@@ -25,6 +25,7 @@ pub const STATUS_HEIGHT: f32 = 28.0;
 mod search;
 pub mod style;
 mod workspace;
+pub(crate) use workspace::scroll_to_heading;
 
 use crate::app::{After, Bia, Choice, Closing, Dialog, Message, Overlay, Panel};
 use iced::widget::{

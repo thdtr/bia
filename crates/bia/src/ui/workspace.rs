@@ -326,10 +326,76 @@ fn preview<'a>(app: &'a Bia, tab: &'a Tab) -> Element<'a, Message> {
         return space().into();
     };
     scrollable(container(markdown_view(app, md)).padding([24, 32]).max_width(760.0))
+        .id(crate::app::PREVIEW_ID)
         .width(Fill)
         .height(Fill)
         .style(style::scroll(c))
         .into()
+}
+
+/// The widget id a heading of the preview gets, from its anchor.
+fn heading_id(anchor: &str) -> iced::widget::Id {
+    iced::widget::Id::from(format!("bia-heading:{anchor}"))
+}
+
+/// Scrolls the preview to the heading a `#anchor` link points to. The
+/// toolkit doesn't say where things are, so this asks the widgets: the
+/// heading's place, less the top of what the preview scrolls.
+pub fn scroll_to_heading(anchor: &str) -> iced::Task<Message> {
+    use iced::advanced::widget::operation::{Operation, Outcome, Scrollable};
+    use iced::{Rectangle, Vector};
+
+    struct Find {
+        heading: iced::widget::Id,
+        preview: iced::widget::Id,
+        heading_y: Option<f32>,
+        content_y: Option<f32>,
+    }
+
+    impl Operation<f32> for Find {
+        fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<f32>)) {
+            operate(self);
+        }
+
+        fn container(&mut self, id: Option<&iced::widget::Id>, bounds: Rectangle) {
+            if self.heading_y.is_none() && id == Some(&self.heading) {
+                self.heading_y = Some(bounds.y);
+            }
+        }
+
+        fn scrollable(
+            &mut self,
+            id: Option<&iced::widget::Id>,
+            _bounds: Rectangle,
+            content: Rectangle,
+            _translation: Vector,
+            _state: &mut dyn Scrollable,
+        ) {
+            if self.content_y.is_none() && id == Some(&self.preview) {
+                self.content_y = Some(content.y);
+            }
+        }
+
+        fn finish(&self) -> Outcome<f32> {
+            match (self.heading_y, self.content_y) {
+                (Some(heading), Some(top)) => Outcome::Some((heading - top - 12.0).max(0.0)),
+                _ => Outcome::None,
+            }
+        }
+    }
+
+    let find = Find {
+        heading: heading_id(anchor),
+        preview: iced::widget::Id::new(crate::app::PREVIEW_ID),
+        heading_y: None,
+        content_y: None,
+    };
+    iced::advanced::widget::operate(find).then(|y| {
+        iced::widget::operation::scroll_to(
+            crate::app::PREVIEW_ID,
+            iced::widget::scrollable::AbsoluteOffset { x: 0.0, y },
+        )
+    })
 }
 
 fn markdown_view<'a>(app: &'a Bia, md: &'a markdown::Content) -> Element<'a, Message> {
@@ -393,6 +459,21 @@ impl<'a> markdown::Viewer<'a, Message> for Viewer {
                 .into()
         }));
         container(lines).width(Fill).padding(settings.code_size.0).style(self.boxed()).into()
+    }
+
+    /// A heading, marked with its anchor so `#anchor` links can find it.
+    fn heading(
+        &self,
+        settings: markdown::Settings,
+        level: &'a markdown::HeadingLevel,
+        text: &'a markdown::Text,
+        index: usize,
+    ) -> Element<'a, Message> {
+        let title: String = text.spans(settings.style).iter().map(|s| s.text.as_ref()).collect();
+        let anchor = bia_core::text::heading_anchor(&title);
+        container(markdown::heading(settings, level, text, index, Message::LinkClicked))
+            .id(heading_id(&anchor))
+            .into()
     }
 
     /// A table wider than the preview scrolls sideways instead of being cut.
