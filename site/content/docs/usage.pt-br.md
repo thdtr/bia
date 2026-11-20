@@ -33,7 +33,13 @@ bia [CAMINHO]...
 
 ## Árvore de arquivos
 
-As pastas aparecem primeiro e depois os arquivos, um por linha. Os nomes listados na configuração `hidden` não são exibidos.
+As pastas aparecem primeiro e depois os arquivos, um por linha. Os nomes listados na configuração `hidden` não são exibidos. O arquivo que você está editando fica selecionado na árvore, e a árvore rola até ele.
+
+Os botões no alto da barra lateral criam um arquivo ou uma pasta, recolhem todas as pastas e escondem a barra. Clicar com o botão direito num arquivo ou numa pasta abre um menu com o resto, como recortar, copiar, colar, duplicar, copiar o caminho, renomear, mover para a lixeira, mostrar no gerenciador de arquivos ou abrir um terminal ali.
+
+Os nomes são digitados direto na árvore. Enter confirma e Esc cancela. Um nome com pastas, como `src/ui/menu.rs`, cria as pastas também. Quando você renomeia um arquivo, o nome já vem selecionado sem a extensão.
+
+Arraste um arquivo ou uma pasta para outra pasta para movê-lo, ou segure Alt para copiar. Arquivos copiados no gerenciador de arquivos podem ser colados na árvore. Uma cópia que ficaria com um nome já usado ganha outro, como `notes copy.md`, e o campo do nome abre para você trocar. O BIA nunca substitui um arquivo ao criar, copiar ou mover.
 
 | Ação | Teclas |
 |---|---|
@@ -41,7 +47,10 @@ As pastas aparecem primeiro e depois os arquivos, um por linha. Os nomes listado
 | Nova pasta | <kbd>Ctrl+Shift+N</kbd> |
 | Renomear | <kbd>F2</kbd> |
 | Mover para a lixeira | <kbd>Delete</kbd> |
+| Recortar, copiar, colar | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> |
 | Mostrar ou esconder a barra lateral | <kbd>Ctrl+B</kbd> |
+
+Recortar, copiar e colar funcionam na árvore depois que você clica numa pasta dela, já que clicar num arquivo leva você para o editor. Clicar com o botão direito no caminho da barra de status copia o caminho.
 
 Arraste a borda da barra lateral para mudar a largura. O BIA lembra a largura e se você escondeu a barra.
 

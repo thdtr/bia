@@ -75,6 +75,7 @@ Undo and redo group changes by word.
 | New folder | <kbd>Ctrl+Shift+N</kbd> | <kbd>⌘⇧N</kbd> |
 | Rename | <kbd>F2</kbd> | <kbd>F2</kbd> |
 | Move to the trash | <kbd>Delete</kbd> | <kbd>⌦</kbd> |
+| Cut, copy, paste in the tree | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> | <kbd>⌘X</kbd>, <kbd>⌘C</kbd>, <kbd>⌘V</kbd> |
 | Show or hide the sidebar | <kbd>Ctrl+B</kbd> | <kbd>⌘B</kbd> |
 | Markdown preview | <kbd>Ctrl+Shift+V</kbd> | <kbd>⌘⇧V</kbd> |
 | Show or hide the terminal | <kbd>Ctrl+`</kbd> | <kbd>⌃`</kbd> |

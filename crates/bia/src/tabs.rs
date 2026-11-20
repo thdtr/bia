@@ -254,22 +254,6 @@ impl Tabs {
         Some(tab)
     }
 
-    /// Closes every tab for `path` or anything inside it.
-    pub fn remove_under(&mut self, path: &Path) {
-        let kept: Vec<Option<PathBuf>> = [Pane::Left, Pane::Right]
-            .map(|p| self.active_in(p).map(|(_, t)| t.path.clone()))
-            .into();
-        self.list.retain(|t| !t.path.starts_with(path));
-        for (slot, pane) in [Pane::Left, Pane::Right].into_iter().enumerate() {
-            let same = kept[slot]
-                .as_ref()
-                .and_then(|p| self.list.iter().position(|t| t.pane == pane && &t.path == p));
-            let first = self.in_pane(pane).map(|(i, _)| i).next();
-            self.active[slot] = same.or(first).unwrap_or(0);
-        }
-        self.settle();
-    }
-
     /// Ctrl+\: moves tab `index` to the other side. The last tab on the
     /// left stays put, since the left side is never empty while the right
     /// has tabs.
@@ -442,14 +426,10 @@ mod tests {
     }
 
     #[test]
-    fn rename_and_delete_follow_folders() {
+    fn renames_follow_folders() {
         let mut t = tabs(&["/w/src/main.rs", "/w/src/ui/mod.rs", "/w/README.md"]);
         t.select(0);
         assert_eq!(t.renamed(Path::new("/w/src"), Path::new("/w/lib")), vec![0, 1]);
         assert_eq!(t.iter().next().unwrap().path, PathBuf::from("/w/lib/main.rs"));
-
-        t.remove_under(Path::new("/w/lib"));
-        assert_eq!(names(&t), ["README.md"]);
-        assert_eq!(t.active().unwrap().name(), "README.md");
     }
 }

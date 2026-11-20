@@ -75,6 +75,7 @@ Desfazer e refazer agrupam as alterações por palavra.
 | Nova pasta | <kbd>Ctrl+Shift+N</kbd> | <kbd>⌘⇧N</kbd> |
 | Renomear | <kbd>F2</kbd> | <kbd>F2</kbd> |
 | Mover para a lixeira | <kbd>Delete</kbd> | <kbd>⌦</kbd> |
+| Recortar, copiar, colar na árvore | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> | <kbd>⌘X</kbd>, <kbd>⌘C</kbd>, <kbd>⌘V</kbd> |
 | Mostrar ou esconder a barra lateral | <kbd>Ctrl+B</kbd> | <kbd>⌘B</kbd> |
 | Prévia de Markdown | <kbd>Ctrl+Shift+V</kbd> | <kbd>⌘⇧V</kbd> |
 | Mostrar ou esconder o terminal | <kbd>Ctrl+`</kbd> | <kbd>⌃`</kbd> |

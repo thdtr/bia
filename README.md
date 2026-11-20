@@ -51,7 +51,7 @@ The install commands above don't trigger this warning.
 
 ## Features
 
-- File tree with one folder per line
+- File tree with one folder per line. Create, rename, move, copy and trash right there, with a right click or by dragging
 - Highlighting for ~200 languages, plus any `.sublime-syntax` file you add ([how](docs/LANGUAGES.md))
 - Line numbers, tabs, undo and redo
 - Find and replace, with match case, whole word and regex

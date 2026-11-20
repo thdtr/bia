@@ -54,7 +54,7 @@ fn empty(app: &Bia) -> Element<'_, Message> {
     let keys = [
         ("Ctrl+P", "welcome.open_file"),
         ("Ctrl+O", "welcome.open_folder"),
-        ("Ctrl+N", "shelf.new_file"),
+        ("Ctrl+N", "tree.new_file"),
         ("Ctrl+Shift+F", "search.title"),
         ("Ctrl+,", "welcome.settings"),
     ];

@@ -57,8 +57,8 @@ Some things are outside that:
 * **Remote X11 or D-Bus.** If `DISPLAY` or `DBUS_SESSION_BUS_ADDRESS` point to another
   machine (X forwarding, a remote session bus), the libraries that talk to your
   desktop follow them over TCP. On a normal desktop both are local.
-* **Links in Markdown.** Clicking a link in the preview copies the URL. BIA doesn't
-  open a browser.
+* **Links in Markdown.** Clicking a web link in the preview copies the URL. BIA
+  doesn't open a browser. Links to files on your disk open them in BIA.
 * **Images in Markdown.** The preview doesn't load images, local or remote. It shows
   the alt text instead.
 * **Network drives.** If you open a folder on NFS or SMB, your OS does the network
@@ -69,6 +69,9 @@ Some things are outside that:
   daemon and every transport (`protocol.allow=never`). Programs are separate from
   BIA, so what they do is up to them, but none of these calls asks git to use the
   network.
+* **Your file manager.** "Show in file manager" asks it to show the file: through
+  D-Bus on Linux (`dbus-send`, or `xdg-open` on the folder when that fails), with
+  `open -R` on macOS and `explorer /select` on Windows. That's all BIA asks it.
 * **The terminal.** It runs your shell, and what you run there is yours, network
   included. BIA only shows it.
 * **Language servers.** They're programs you install and name in

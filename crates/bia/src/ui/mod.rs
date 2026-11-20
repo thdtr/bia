@@ -14,6 +14,8 @@
 //! ```
 
 mod explorer;
+pub(crate) use explorer::row_height;
+pub mod menu;
 mod palette;
 mod panel;
 mod search;
@@ -55,6 +57,9 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     let mut layers = stack![base];
     if let Some(p) = &app.palette {
         layers = layers.push(palette::view(app, p));
+    }
+    if let Some(menu) = &app.menu {
+        layers = layers.push(menu::view(app, menu));
     }
     if let Some(dialog) = &app.dialog {
         layers = layers.push(dialog_view(app, dialog));
@@ -197,7 +202,11 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
                 .as_ref()
                 .and_then(|tree| tab.path.strip_prefix(tree.root()).ok())
                 .unwrap_or(&tab.path);
-            hint(app, shown.display().to_string()).into()
+            // A right click copies the full path.
+            let copy = Message::Tree(crate::app::TreeAction::CopyPath(tab.path.clone()));
+            iced::widget::mouse_area(hint(app, shown.display().to_string()))
+                .on_right_press(copy)
+                .into()
         }
         (None, None, _) => space().into(),
     };
@@ -298,6 +307,12 @@ fn dialog_view<'a>(app: &'a Bia, dialog: &Dialog) -> Element<'a, Message> {
         Dialog::Busy(Closing::Terminal(_)) => {
             (t.t("busy.terminal").to_owned(), "", "busy.close_anyway", Choice::Cancel)
         }
+        Dialog::Trash(path) => (
+            t.f("tree.trash_question", &[("name", &name(path))]),
+            "",
+            "tree.trash",
+            Choice::Discard,
+        ),
         Dialog::Quit => {
             let dirty = app.tabs.dirty_indices().len();
             (

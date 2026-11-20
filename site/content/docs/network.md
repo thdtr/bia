@@ -40,12 +40,13 @@ BIA's own code never opens a network connection, makes an HTTP request or perfor
 - **The folder picker.** <kbd>Ctrl+O</kbd> asks the operating system to show its own dialog (the XDG portal on Linux, AppKit on macOS, the shell on Windows). That dialog belongs to the operating system. Opening folders from the command line does not use it.
 - **Local communication.** On Linux, the request for that dialog travels over D-Bus, which uses a Unix socket. This is communication between programs on the same machine, not networking.
 - **Remote X11 or D-Bus sessions.** If `DISPLAY` or `DBUS_SESSION_BUS_ADDRESS` point to another machine, the libraries that talk to the desktop follow them over TCP. On a regular desktop, both are local.
-- **Links in Markdown.** Clicking a link in the preview copies its URL. BIA does not open a browser.
+- **Links in Markdown.** Clicking a web link in the preview copies its URL. BIA does not open a browser. Links to files on your disk open them in BIA.
 - **Images in Markdown.** The preview does not load images, local or remote. It shows their alternative text.
 - **Network drives.** When a folder on NFS or SMB is opened, the operating system performs the network access. BIA only reads files.
 - **Programs BIA runs.** Some features run other programs, which are separate from BIA:
   - **git**, to show changed lines and files and the branch. BIA only asks it to read the repository, and turns off what could make it start other programs or reach a server: hooks, the fsmonitor daemon and every transport (`protocol.allow=never`).
   - **Language servers**, only the ones named in `language_servers`. BIA downloads none, and starts them with the download switches of cargo, go, pip and npm turned off. See [Language servers](@/docs/language-servers.md#the-network).
+  - **Your file manager**, when you choose "Show in file manager". BIA only asks it to show the file.
   - **Your shell**, in the terminal. What runs there is up to you, network included.
 
   For a hard guarantee on Linux, `unshare -rn bia` also takes the network away from every program BIA starts.

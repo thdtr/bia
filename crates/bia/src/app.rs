@@ -47,6 +47,7 @@ pub const EDITOR_ID: &str = "bia-editor";
 /// The editor on the right side of a split.
 pub const EDITOR_RIGHT_ID: &str = "bia-editor-right";
 pub const PROMPT_ID: &str = "bia-prompt";
+pub const TREE_ID: &str = "bia-tree";
 pub const FIND_ID: &str = "bia-find";
 pub const REPLACE_ID: &str = "bia-replace";
 pub const PALETTE_ID: &str = "bia-palette";
@@ -136,12 +137,27 @@ pub enum Message {
     Dragged(iced::Point),
     DragEnd,
     WindowResized(iced::Size),
-    RowPressed(PathBuf),
     /// The file tree scrolled: offset and height of what's in sight.
     TreeScrolled(f32, f32),
-    RowContext(PathBuf),
-    ToggleShelf,
-    Shelf(ShelfAction),
+    /// The mouse went down on a row of the tree: a click or a drag starts.
+    RowDown(PathBuf),
+    /// The mouse is over a row of the tree.
+    RowEnter(PathBuf),
+    /// The mouse left the tree.
+    TreeLeave,
+    /// The mouse button came up after a [`Message::RowDown`].
+    TreeRelease,
+    /// A right click on a row. A [`Message::TreeMenu`] follows.
+    RowTarget(PathBuf),
+    /// A right click in the sidebar, at this point of the window.
+    TreeMenu(iced::Point),
+    CloseMenu,
+    Tree(TreeAction),
+    /// What the clipboard had when you pasted into folder `.0`.
+    PasteFiles(PathBuf, Option<String>),
+    ModifiersChanged(keyboard::Modifiers),
+    /// Something done in the background failed, and says why.
+    Failed(Option<String>),
     PromptInput(String),
     PromptSubmit,
     SelectTab(usize),
@@ -177,12 +193,35 @@ pub enum Message {
     MoveToOtherSide(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShelfAction {
-    NewFile,
-    NewFolder,
-    Rename,
-    Delete,
+/// What you can do to a file or folder in the tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TreeAction {
+    NewFile(PathBuf),
+    NewFolder(PathBuf),
+    Rename(PathBuf),
+    Duplicate(PathBuf),
+    Trash(PathBuf),
+    Cut(PathBuf),
+    Copy(PathBuf),
+    /// Pastes into this folder.
+    Paste(PathBuf),
+    CopyPath(PathBuf),
+    CopyRelativePath(PathBuf),
+    /// Shows it in the system's file manager.
+    Reveal(PathBuf),
+    /// A new terminal in this folder.
+    OpenTerminal(PathBuf),
+    CollapseAll,
+    Refresh,
+}
+
+/// A row being dragged in the tree.
+pub struct TreeDrag {
+    pub from: PathBuf,
+    /// The row under the mouse now.
+    pub over: Option<PathBuf>,
+    /// The mouse went over another row, so this is a drag, not a click.
+    pub moved: bool,
 }
 
 /// The dividers you can drag.
@@ -213,6 +252,8 @@ pub enum Dialog {
     Quit,
     /// Closing a tab with unsaved changes: save, discard, cancel.
     Close(PathBuf),
+    /// Moving a file or folder to the trash: trash, cancel.
+    Trash(PathBuf),
     /// Saving a file that changed on disk since it was opened: overwrite,
     /// load the disk version, cancel.
     Conflict(PathBuf),
@@ -233,13 +274,7 @@ pub enum Choice {
     Cancel,
 }
 
-/// The bottom strip of the sidebar: explorer actions and their prompts.
-pub enum Shelf {
-    Hidden,
-    Actions,
-    Prompt(Prompt),
-}
-
+/// The name field that opens in the tree to create or rename something.
 pub struct Prompt {
     pub kind: PromptKind,
     pub value: String,
@@ -247,10 +282,10 @@ pub struct Prompt {
 }
 
 pub enum PromptKind {
+    /// A new file in this folder.
     NewFile(PathBuf),
     NewFolder(PathBuf),
     Rename(PathBuf),
-    Delete(PathBuf),
 }
 
 pub struct Find {
@@ -416,7 +451,17 @@ pub struct Bia {
     pub tree_viewport: (f32, f32),
     pub selected: Option<PathBuf>,
     pub tabs: Tabs,
-    pub shelf: Shelf,
+    /// The name field open in the tree, if any.
+    pub prompt: Option<Prompt>,
+    pub menu: Option<ui::menu::Menu>,
+    /// The row a right click landed on, until the menu opens for it.
+    menu_target: Option<PathBuf>,
+    pub tree_drag: Option<TreeDrag>,
+    /// The row under the mouse.
+    pub tree_hover: Option<PathBuf>,
+    /// A file or folder cut (`true`) or copied in the tree, until pasted.
+    file_clipboard: Option<(PathBuf, bool)>,
+    modifiers: keyboard::Modifiers,
     pub find: Option<Find>,
     pub palette: Option<Palette>,
     pub notice: Option<Notice>,
@@ -477,7 +522,13 @@ impl Bia {
             tree_viewport: (0.0, 1_200.0),
             selected: None,
             tabs: Tabs::default(),
-            shelf: Shelf::Hidden,
+            prompt: None,
+            menu: None,
+            menu_target: None,
+            tree_drag: None,
+            tree_hover: None,
+            file_clipboard: None,
+            modifiers: keyboard::Modifiers::empty(),
             find: None,
             palette: None,
             notice: None,
@@ -568,6 +619,9 @@ impl Bia {
             Event::Window(window::Event::Opened { size, .. } | window::Event::Resized(size)) => {
                 Some(Message::WindowResized(size))
             }
+            Event::Keyboard(keyboard::Event::ModifiersChanged(m)) => {
+                Some(Message::ModifiersChanged(m))
+            }
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key, physical_key, modifiers, ..
             }) => {
@@ -590,9 +644,22 @@ impl Bia {
         } else {
             Subscription::none()
         };
+        // A row of the tree was pressed: its release is a click or a drop,
+        // wherever the mouse is by then.
+        let tree_drag = if self.tree_drag.is_some() {
+            event::listen_with(|event, _, _| match event {
+                Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
+                    Some(Message::TreeRelease)
+                }
+                _ => None,
+            })
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
             keys,
             drag,
+            tree_drag,
             Subscription::run(lsp_events),
             Subscription::run(terminal_events),
         ])
@@ -675,29 +742,43 @@ impl Bia {
             }
 
             Message::TreeScrolled(offset, height) => self.tree_viewport = (offset, height),
-            Message::RowPressed(path) => {
+            Message::RowDown(path) => {
+                self.menu = None;
+                self.prompt = None;
                 self.selected = Some(path.clone());
-                if path.is_dir() {
-                    if let Some(tree) = &mut self.tree {
-                        tree.toggle(&path);
-                    }
-                } else {
-                    return self.open(path);
+                self.tree_drag = Some(TreeDrag { from: path, over: None, moved: false });
+            }
+            Message::RowEnter(path) => {
+                if let Some(drag) = &mut self.tree_drag {
+                    drag.moved |= path != drag.from;
+                    drag.over = Some(path.clone());
+                }
+                self.tree_hover = Some(path);
+            }
+            Message::TreeLeave => {
+                self.tree_hover = None;
+                if let Some(drag) = &mut self.tree_drag {
+                    drag.over = None;
                 }
             }
-            Message::RowContext(path) => {
-                self.selected = Some(path);
-                self.shelf = Shelf::Actions;
+            Message::TreeRelease => return self.tree_release(),
+            Message::RowTarget(path) => self.menu_target = Some(path),
+            Message::TreeMenu(at) => self.tree_menu(at),
+            Message::CloseMenu => self.menu = None,
+            Message::Tree(action) => {
+                self.menu = None;
+                return self.tree_action(action);
             }
-            Message::ToggleShelf => {
-                self.shelf = match self.shelf {
-                    Shelf::Hidden => Shelf::Actions,
-                    _ => Shelf::Hidden,
-                };
+            Message::PasteFiles(dir, text) => return self.paste_files(&dir, text.as_deref()),
+            Message::ModifiersChanged(m) => self.modifiers = m,
+            Message::Failed(error) => {
+                if let Some(error) = error {
+                    let text = self.look.i18n.f("notice.fs_error", &[("error", &error)]);
+                    self.error(text);
+                }
             }
-            Message::Shelf(action) => return self.shelf_action(action),
             Message::PromptInput(value) => {
-                if let Shelf::Prompt(prompt) = &mut self.shelf {
+                if let Some(prompt) = &mut self.prompt {
                     prompt.value = value;
                     prompt.error = None;
                 }
@@ -706,8 +787,8 @@ impl Bia {
 
             Message::SelectTab(index) => {
                 if self.tabs.select(index) {
-                    self.reveal_active();
-                    return self.focus_editor();
+                    let reveal = self.reveal_active();
+                    return Task::batch([reveal, self.focus_editor()]);
                 }
             }
             Message::CloseTab(index) => return self.close_tab(index),
@@ -724,7 +805,7 @@ impl Bia {
                     }
                     self.tabs.focus(pane);
                     self.find = None;
-                    self.reveal_active();
+                    let _ = self.reveal_active();
                 }
                 let typed = match &input {
                     Input::Text(text) => text.chars().last(),
@@ -887,8 +968,8 @@ impl Bia {
             }
             Message::MoveToOtherSide(index) => {
                 if self.tabs.move_to_other(index) {
-                    self.reveal_active();
-                    return self.focus_editor();
+                    let reveal = self.reveal_active();
+                    return Task::batch([reveal, self.focus_editor()]);
                 }
             }
             Message::Save => {
@@ -1012,7 +1093,9 @@ impl Bia {
     }
 
     fn shortcut(&mut self, shortcut: Shortcut) -> Task<Message> {
-        if self.dialog.is_some() && shortcut != Shortcut::Escape {
+        let confirms =
+            shortcut == Shortcut::Confirm && matches!(self.dialog, Some(Dialog::Trash(_)));
+        if self.dialog.is_some() && shortcut != Shortcut::Escape && !confirms {
             return Task::none();
         }
         match shortcut {
@@ -1078,23 +1161,43 @@ impl Bia {
             Shortcut::Split => {
                 return self.update(Message::MoveToOtherSide(self.tabs.active_index()));
             }
-            Shortcut::NewFile => return self.shelf_action(ShelfAction::NewFile),
-            Shortcut::NewFolder => return self.shelf_action(ShelfAction::NewFolder),
-            Shortcut::Rename => return self.shelf_action(ShelfAction::Rename),
-            Shortcut::Delete => return self.shelf_action(ShelfAction::Delete),
+            Shortcut::NewFile | Shortcut::NewFolder => {
+                let Some(dir) = self.target_dir() else { return Task::none() };
+                return self.tree_action(if shortcut == Shortcut::NewFile {
+                    TreeAction::NewFile(dir)
+                } else {
+                    TreeAction::NewFolder(dir)
+                });
+            }
+            // These reach the app only when no editor, terminal or field took
+            // them, so they act on what's selected in the tree.
+            Shortcut::Rename | Shortcut::Delete | Shortcut::Cut | Shortcut::Copy => {
+                let Some(path) = self.selected_in_tree() else { return Task::none() };
+                return self.tree_action(match shortcut {
+                    Shortcut::Rename => TreeAction::Rename(path),
+                    Shortcut::Delete => TreeAction::Trash(path),
+                    Shortcut::Cut => TreeAction::Cut(path),
+                    _ => TreeAction::Copy(path),
+                });
+            }
+            Shortcut::Paste => {
+                let Some(dir) = self.target_dir() else { return Task::none() };
+                return self.tree_action(TreeAction::Paste(dir));
+            }
             Shortcut::Confirm => {
-                if matches!(&self.shelf, Shelf::Prompt(Prompt { kind: PromptKind::Delete(_), .. }))
-                {
-                    return self.submit_prompt();
+                if matches!(self.dialog, Some(Dialog::Trash(_))) {
+                    return self.answer(Choice::Discard);
                 }
             }
             Shortcut::Escape => {
                 if self.dialog.is_some() {
                     self.dialog = None;
+                } else if self.menu.is_some() {
+                    self.menu = None;
                 } else if self.palette.is_some() {
                     return self.update(Message::PaletteClose);
-                } else if !matches!(self.shelf, Shelf::Hidden) {
-                    self.shelf = Shelf::Hidden;
+                } else if self.prompt.is_some() {
+                    self.prompt = None;
                 } else if self.find.is_some() {
                     self.find = None;
                     return self.focus_editor();
@@ -1138,7 +1241,7 @@ impl Bia {
         self.tree = Some(FileTree::new(root.clone(), self.settings.hidden.clone()));
         self.files = None;
         self.selected = None;
-        self.shelf = Shelf::Hidden;
+        self.prompt = None;
         self.project_search = ProjectSearch::default();
         self.git = Arc::default();
         if !remember || !self.tabs.is_empty() {
@@ -1174,7 +1277,6 @@ impl Bia {
 
     /// Ctrl+Shift+` or the + button: another shell, in a new tab.
     fn new_terminal(&mut self) -> Task<Message> {
-        let Some(events) = self.term_events.clone() else { return Task::none() };
         let dir = self
             .tree
             .as_ref()
@@ -1185,6 +1287,11 @@ impl Bia {
                     .map(PathBuf::from)
             })
             .unwrap_or_else(|| PathBuf::from("."));
+        self.new_terminal_in(dir)
+    }
+
+    fn new_terminal_in(&mut self, dir: PathBuf) -> Task<Message> {
+        let Some(events) = self.term_events.clone() else { return Task::none() };
         let size = crate::terminal::Size { columns: 80, lines: 12 };
         let id = self.terminals.next_id();
         match Terminal::spawn(id, &dir, size, events) {
@@ -1263,6 +1370,10 @@ impl Bia {
 
     /// The sizes the sidebar and the terminal take on screen, kept inside
     /// a window that may have shrunk since they were set.
+    pub fn window_size(&self) -> iced::Size {
+        self.window
+    }
+
     pub fn sidebar_width(&self) -> f32 {
         self.sidebar_width.min((self.window.width - 320.0).max(160.0))
     }
@@ -1593,8 +1704,8 @@ impl Bia {
         if let Some(i) = active {
             self.tabs.select(i);
         }
-        self.reveal_active();
-        self.focus_editor()
+        let reveal = self.reveal_active();
+        Task::batch([reveal, self.focus_editor()])
     }
 
     /// Writes the workspace's open files to `state.json`.
@@ -1722,9 +1833,9 @@ impl Bia {
         let is_text = matches!(tab.body, Body::Text(_));
         let base = is_text.then(|| git_base(tab.path.clone()));
         self.tabs.insert(tab);
-        self.reveal_active();
+        let reveal = self.reveal_active();
         self.sync_lsp();
-        Task::batch([self.focus_editor()].into_iter().chain(base))
+        Task::batch([reveal, self.focus_editor()].into_iter().chain(base))
     }
 
     /// Ctrl+Shift+V on a Markdown file: opens its preview on the other side
@@ -1804,13 +1915,27 @@ impl Bia {
     }
 
     /// Keeps the explorer in step with the active tab.
-    fn reveal_active(&mut self) {
-        if let (Some(tab), Some(tree)) = (self.tabs.active(), &mut self.tree)
-            && tab.path.starts_with(tree.root())
-        {
-            tree.reveal(&tab.path);
-            self.selected = Some(tab.path.clone());
+    /// Keeps the explorer in step with the active tab: opens the folders
+    /// down to it, selects it, and scrolls to it if it's out of sight.
+    fn reveal_active(&mut self) -> Task<Message> {
+        let Some(path) = self.tabs.active().map(|t| t.path.clone()) else { return Task::none() };
+        let Some(tree) = &mut self.tree else { return Task::none() };
+        if !path.starts_with(tree.root()) {
+            return Task::none();
         }
+        tree.reveal(&path);
+        self.selected = Some(path.clone());
+        let Some(index) = tree.rows().iter().position(|r| r.path == path) else {
+            return Task::none();
+        };
+        let height = ui::row_height(self);
+        let (offset, in_sight) = self.tree_viewport;
+        let y = index as f32 * height;
+        if y >= offset && y + height <= offset + in_sight {
+            return Task::none();
+        }
+        let y = (y - in_sight / 3.0).max(0.0);
+        operation::scroll_to(TREE_ID, iced::widget::scrollable::AbsoluteOffset { x: 0.0, y })
     }
 
     fn close_tab(&mut self, index: usize) -> Task<Message> {
@@ -1851,6 +1976,7 @@ impl Bia {
             (_, Choice::Cancel) => {}
             (Dialog::Busy(Closing::Quit), _) => return self.quit(false),
             (Dialog::Busy(Closing::Terminal(id)), _) => return self.close_terminal(id),
+            (Dialog::Trash(path), _) => return self.trash(&path),
             (Dialog::Quit, Choice::Save) => {
                 let all_saved = self.tabs.dirty_indices().into_iter().all(|i| self.save(i, false));
                 if all_saved {
@@ -2028,6 +2154,19 @@ impl Bia {
 
     // ── Explorer actions ─────────────────────────────────────────────────
 
+    /// The folder "new file" and "new folder" act on, or the open folder.
+    pub fn target_dir_or_root(&self) -> PathBuf {
+        self.target_dir().unwrap_or_default()
+    }
+
+    /// The folder a dragged row would land in, while one is dragged.
+    pub fn drop_target(&self) -> Option<PathBuf> {
+        let drag = self.tree_drag.as_ref().filter(|d| d.moved)?;
+        let over = drag.over.as_ref()?;
+        let dir = if over.is_dir() { over.clone() } else { over.parent()?.to_path_buf() };
+        (!dir.starts_with(&drag.from) && Some(dir.as_path()) != drag.from.parent()).then_some(dir)
+    }
+
     /// Folder that "new file" / "new folder" act on.
     fn target_dir(&self) -> Option<PathBuf> {
         let root = self.tree.as_ref()?.root().to_path_buf();
@@ -2038,75 +2177,214 @@ impl Bia {
         })
     }
 
-    fn shelf_action(&mut self, action: ShelfAction) -> Task<Message> {
-        let Some(root) = self.tree.as_ref().map(|t| t.root().to_path_buf()) else {
-            return Task::none();
-        };
-        let selected = self.selected.clone().filter(|p| p != &root && p.exists());
-        let (kind, value) = match action {
-            ShelfAction::NewFile => {
-                (PromptKind::NewFile(self.target_dir().unwrap_or(root)), String::new())
-            }
-            ShelfAction::NewFolder => {
-                (PromptKind::NewFolder(self.target_dir().unwrap_or(root)), String::new())
-            }
-            ShelfAction::Rename => match selected {
-                Some(p) => {
-                    let name = tree::display_name(&p);
-                    (PromptKind::Rename(p), name)
+    /// What's selected in the tree, other than the root folder.
+    fn selected_in_tree(&self) -> Option<PathBuf> {
+        let root = self.tree.as_ref()?.root();
+        self.selected.clone().filter(|p| p != root && p.exists())
+    }
+
+    /// The mouse came up after pressing a row: a click opens the file or
+    /// the folder, a drag onto another folder moves (or with Alt, copies)
+    /// what was dragged there.
+    fn tree_release(&mut self) -> Task<Message> {
+        let Some(drag) = self.tree_drag.take() else { return Task::none() };
+        if !drag.moved {
+            let path = drag.from;
+            if path.is_dir() {
+                if let Some(tree) = &mut self.tree {
+                    tree.toggle(&path);
                 }
-                None => return Task::none(),
-            },
-            ShelfAction::Delete => match selected {
-                Some(p) => (PromptKind::Delete(p), String::new()),
-                None => return Task::none(),
-            },
-        };
-        let needs_input = !matches!(kind, PromptKind::Delete(_));
-        self.shelf = Shelf::Prompt(Prompt { kind, value, error: None });
-        if needs_input {
-            Task::batch([operation::focus(PROMPT_ID), operation::select_all(PROMPT_ID)])
-        } else {
-            Task::none()
+                return Task::none();
+            }
+            return self.open(path);
         }
+        self.tree_drag = Some(drag);
+        let target = self.drop_target();
+        let Some(drag) = self.tree_drag.take() else { return Task::none() };
+        let Some(dir) = target else { return Task::none() };
+        if self.modifiers.alt() {
+            return self.copy_into(&drag.from, &dir);
+        }
+        self.move_into(&drag.from, &dir);
+        Task::none()
+    }
+
+    /// The menu for a right click in the sidebar: for the row it landed
+    /// on, or for the open folder.
+    fn tree_menu(&mut self, at: iced::Point) {
+        use ui::menu::Item;
+        let Some(root) = self.tree.as_ref().map(|t| t.root().to_path_buf()) else { return };
+        let target = self.menu_target.take();
+        self.prompt = None;
+        let path = target.clone().unwrap_or_else(|| root.clone());
+        let dir = if path.is_dir() {
+            path.clone()
+        } else {
+            path.parent().map_or(root.clone(), Path::to_path_buf)
+        };
+        let tree = |a: TreeAction| Message::Tree(a);
+        let mut items = vec![
+            Item::action("tree.new_file", None, tree(TreeAction::NewFile(dir.clone()))),
+            Item::action("tree.new_folder", None, tree(TreeAction::NewFolder(dir.clone()))),
+            Item::Separator,
+        ];
+        if let Some(p) = &target {
+            self.selected = Some(p.clone());
+            items.extend([
+                Item::action("tree.cut", Some("Ctrl+X"), tree(TreeAction::Cut(p.clone()))),
+                Item::action("tree.copy", Some("Ctrl+C"), tree(TreeAction::Copy(p.clone()))),
+            ]);
+        }
+        items.extend([Item::action(
+            "tree.paste",
+            Some("Ctrl+V"),
+            tree(TreeAction::Paste(dir.clone())),
+        )]);
+        if let Some(p) = &target {
+            items.push(Item::action(
+                "tree.duplicate",
+                None,
+                tree(TreeAction::Duplicate(p.clone())),
+            ));
+        }
+        items.extend([
+            Item::Separator,
+            Item::action("tree.copy_path", None, tree(TreeAction::CopyPath(path.clone()))),
+            Item::action(
+                "tree.copy_relative_path",
+                None,
+                tree(TreeAction::CopyRelativePath(path.clone())),
+            ),
+        ]);
+        if let Some(p) = &target {
+            items.extend([
+                Item::Separator,
+                Item::action("tree.rename", Some("F2"), tree(TreeAction::Rename(p.clone()))),
+                Item::danger("tree.trash", Some("Delete"), tree(TreeAction::Trash(p.clone()))),
+            ]);
+        }
+        items.extend([
+            Item::Separator,
+            Item::action("tree.reveal", None, tree(TreeAction::Reveal(path.clone()))),
+            Item::action("tree.open_terminal", None, tree(TreeAction::OpenTerminal(dir))),
+            Item::Separator,
+            Item::action("tree.collapse_all", None, tree(TreeAction::CollapseAll)),
+            Item::action("tree.refresh", None, tree(TreeAction::Refresh)),
+        ]);
+        self.menu = Some(ui::menu::Menu { at, items });
+    }
+
+    fn tree_action(&mut self, action: TreeAction) -> Task<Message> {
+        let root = self.tree.as_ref().map(|t| t.root().to_path_buf());
+        let new_file = matches!(action, TreeAction::NewFile(_));
+        let cut = matches!(action, TreeAction::Cut(_));
+        let relative = matches!(action, TreeAction::CopyRelativePath(_));
+        match action {
+            TreeAction::NewFile(dir) | TreeAction::NewFolder(dir) if self.tree.is_some() => {
+                if let Some(tree) = &mut self.tree
+                    && Some(&dir) != root.as_ref()
+                {
+                    tree.reveal(&dir.join("x"));
+                    tree.expand(&dir);
+                }
+                let kind =
+                    if new_file { PromptKind::NewFile(dir) } else { PromptKind::NewFolder(dir) };
+                self.prompt = Some(Prompt { kind, value: String::new(), error: None });
+                return operation::focus(PROMPT_ID);
+            }
+            TreeAction::NewFile(_) | TreeAction::NewFolder(_) => {}
+            TreeAction::Rename(path) => return self.start_rename(path),
+            TreeAction::Duplicate(path) => {
+                if let Some(dir) = path.parent().map(Path::to_path_buf) {
+                    return self.copy_into(&path, &dir);
+                }
+            }
+            TreeAction::Trash(path) => {
+                // Trashing a file would throw away edits that only live in a tab.
+                if let Some(tab) = self.tabs.dirty_under(&path) {
+                    let text = self.look.i18n.f("prompt.unsaved", &[("name", &tab.name())]);
+                    self.error(text);
+                } else {
+                    self.dialog = Some(Dialog::Trash(path));
+                }
+            }
+            TreeAction::Cut(path) | TreeAction::Copy(path) => {
+                let text = path.display().to_string();
+                self.file_clipboard = Some((path, cut));
+                // The path goes to the system clipboard too, so pasting it
+                // anywhere works, and so BIA can tell, when you paste, whether
+                // something newer was copied since.
+                return iced::clipboard::write(text);
+            }
+            TreeAction::Paste(dir) => {
+                return iced::clipboard::read()
+                    .map(move |text| Message::PasteFiles(dir.clone(), text));
+            }
+            TreeAction::CopyPath(path) | TreeAction::CopyRelativePath(path) => {
+                let text = match root.as_deref().and_then(|r| path.strip_prefix(r).ok()) {
+                    Some(rel) if relative => rel.display().to_string(),
+                    _ => path.display().to_string(),
+                };
+                let notice = self.look.i18n.f("notice.copied", &[("text", &text)]);
+                self.info(notice);
+                return iced::clipboard::write(text);
+            }
+            TreeAction::Reveal(path) => {
+                // Asking the file manager can take a moment: not on this thread.
+                return Task::perform(
+                    async move { reveal_in_file_manager(&path).err().map(|e| e.to_string()) },
+                    Message::Failed,
+                );
+            }
+            TreeAction::OpenTerminal(dir) => return self.new_terminal_in(dir),
+            TreeAction::CollapseAll => {
+                if let Some(tree) = &mut self.tree {
+                    tree.collapse_all();
+                }
+            }
+            TreeAction::Refresh => {
+                if let Some(tree) = &mut self.tree {
+                    tree.refresh();
+                    self.files = None;
+                }
+                return self.refresh_git();
+            }
+        }
+        Task::none()
+    }
+
+    /// Opens the name field on the row of `path`, with the name selected
+    /// up to its extension, so typing replaces just the name.
+    fn start_rename(&mut self, path: PathBuf) -> Task<Message> {
+        let name = tree::display_name(&path);
+        let stem = match name.rfind('.') {
+            Some(i) if i > 0 && path.is_file() => name[..i].chars().count(),
+            _ => name.chars().count(),
+        };
+        self.reveal_in_tree(&path);
+        self.prompt = Some(Prompt { kind: PromptKind::Rename(path), value: name, error: None });
+        Task::batch([operation::focus(PROMPT_ID), operation::select_range(PROMPT_ID, 0, stem)])
     }
 
     fn submit_prompt(&mut self) -> Task<Message> {
-        let Shelf::Prompt(prompt) = &mut self.shelf else { return Task::none() };
+        let Some(prompt) = &mut self.prompt else { return Task::none() };
         let i18n = &self.look.i18n;
-        let fs_error = |e: FsError| match e {
-            FsError::InvalidName => i18n.t("prompt.invalid").to_owned(),
-            FsError::Exists(name) => i18n.f("prompt.exists", &[("name", &name)]),
-            FsError::Io(e) => e.to_string(),
-        };
-        let result: Result<Option<PathBuf>, String> = match &prompt.kind {
+        let result: Result<Option<PathBuf>, FsError> = match &prompt.kind {
             PromptKind::NewFile(dir) => fs_ops::create_file(dir, &prompt.value).map(Some),
             PromptKind::NewFolder(dir) => fs_ops::create_dir(dir, &prompt.value).map(Some),
             PromptKind::Rename(from) => fs_ops::rename(from, &prompt.value),
-            PromptKind::Delete(path) => {
-                // Trashing a file would throw away edits that only live in a tab.
-                if let Some(tab) = self.tabs.dirty_under(path) {
-                    prompt.error = Some(i18n.f("prompt.unsaved", &[("name", &tab.name())]));
-                    return Task::none();
-                }
-                trash::delete(path)
-                    .map(|()| None)
-                    .map_err(|e| FsError::Io(std::io::Error::other(e.to_string())))
-            }
-        }
-        .map_err(fs_error);
-
+        };
         let path = match result {
             Ok(path) => path,
-            Err(error) => {
-                prompt.error = Some(error);
+            Err(e) => {
+                // The field stays open, so you can fix the name.
+                let text = fs_error_text(i18n, e);
+                prompt.error = Some(text.clone());
+                self.error(text);
                 return Task::none();
             }
         };
-
-        let Shelf::Prompt(prompt) = std::mem::replace(&mut self.shelf, Shelf::Hidden) else {
-            unreachable!("checked at the top")
-        };
+        let Some(prompt) = self.prompt.take() else { return Task::none() };
         match (prompt.kind, path) {
             (PromptKind::NewFile(_), Some(path)) => {
                 self.reveal_in_tree(&path);
@@ -2115,47 +2393,123 @@ impl Bia {
             (PromptKind::NewFolder(_), Some(path)) => {
                 self.reveal_in_tree(&path);
                 if let Some(tree) = &mut self.tree {
-                    tree.toggle(&path);
+                    tree.expand(&path);
                 }
             }
-            (PromptKind::Rename(from), Some(to)) => {
-                if let Some(tree) = &mut self.tree {
-                    tree.renamed(&from, &to);
-                }
-                // A new extension may mean a new language.
-                for i in self.tabs.renamed(&from, &to) {
-                    let Some(tab) = self.tabs.get_mut(i) else { continue };
-                    // The backup is filed under the old path; the next tick
-                    // writes it under the new one.
-                    if tab.backup.take().is_some()
-                        && let Ok(rest) = tab.path.strip_prefix(&to)
-                    {
-                        self.backups.remove(from.join(rest));
-                    }
-                    let (path, text) = match tab.buffer() {
-                        Some(b) => (tab.path.clone(), b.text()),
-                        None => continue,
-                    };
-                    let syntax = self.detect_syntax(&path, &text);
-                    if let Some(buffer) = self.tabs.get_mut(i).and_then(Tab::buffer_mut) {
-                        buffer.editor.syntax = syntax;
-                    }
-                }
-                self.selected = Some(to);
-            }
-            (PromptKind::Delete(deleted), _) => {
-                self.tabs.remove_under(&deleted);
-                self.selected = None;
-                if let Some(tree) = &mut self.tree {
-                    tree.refresh();
-                    self.files = None;
-                    self.files = None;
-                }
-            }
+            (PromptKind::Rename(from), Some(to)) => self.moved(&from, &to),
             // Renaming to the same name changes nothing.
             _ => {}
         }
         Task::none()
+    }
+
+    /// `from` is now at `to`, renamed or moved: the tree, the tabs and the
+    /// backups follow it.
+    fn moved(&mut self, from: &Path, to: &Path) {
+        if let Some(tree) = &mut self.tree {
+            tree.renamed(from, to);
+            self.files = None;
+        }
+        // A new extension may mean a new language.
+        for i in self.tabs.renamed(from, to) {
+            let Some(tab) = self.tabs.get_mut(i) else { continue };
+            // The backup is filed under the old path; the next tick
+            // writes it under the new one.
+            if tab.backup.take().is_some()
+                && let Ok(rest) = tab.path.strip_prefix(to)
+            {
+                self.backups.remove(from.join(rest));
+            }
+            let (path, text) = match tab.buffer() {
+                Some(b) => (tab.path.clone(), b.text()),
+                None => continue,
+            };
+            let syntax = self.detect_syntax(&path, &text);
+            if let Some(buffer) = self.tabs.get_mut(i).and_then(Tab::buffer_mut) {
+                buffer.editor.syntax = syntax;
+            }
+        }
+        self.reveal_in_tree(to);
+    }
+
+    fn move_into(&mut self, from: &Path, dir: &Path) {
+        match fs_ops::move_into(from, dir) {
+            Ok(Some(to)) => self.moved(from, &to),
+            Ok(None) => {}
+            Err(e) => {
+                let text = fs_error_text(&self.look.i18n, e);
+                self.error(text);
+            }
+        }
+    }
+
+    /// Copies `from` into `dir`. When the copy had to get another name
+    /// (`notes copy.md`), its name field opens so you can pick a better one.
+    fn copy_into(&mut self, from: &Path, dir: &Path) -> Task<Message> {
+        match fs_ops::copy_into(from, dir) {
+            Ok(to) => {
+                if to.file_name() != from.file_name() {
+                    return self.start_rename(to);
+                }
+                self.reveal_in_tree(&to);
+            }
+            Err(e) => {
+                let text = fs_error_text(&self.look.i18n, e);
+                self.error(text);
+            }
+        }
+        Task::none()
+    }
+
+    /// Pastes into `dir`: what was cut or copied in the tree, if the
+    /// clipboard still holds its path, or else the files the clipboard
+    /// names (copied in a file manager, say).
+    fn paste_files(&mut self, dir: &Path, text: Option<&str>) -> Task<Message> {
+        let text = text.unwrap_or_default();
+        if let Some((path, cut)) = self.file_clipboard.clone()
+            && text.trim() == path.display().to_string()
+        {
+            if cut {
+                self.file_clipboard = None;
+                self.move_into(&path, dir);
+                return Task::none();
+            }
+            return self.copy_into(&path, dir);
+        }
+        let paths = text::clipboard_paths(text);
+        if let [single] = paths.as_slice() {
+            return self.copy_into(single, dir);
+        }
+        for path in paths.iter().filter(|p| p.exists()) {
+            if let Err(e) = fs_ops::copy_into(path, dir) {
+                let text = fs_error_text(&self.look.i18n, e);
+                self.error(text);
+            }
+        }
+        if let Some(tree) = &mut self.tree {
+            tree.refresh();
+            self.files = None;
+        }
+        Task::none()
+    }
+
+    /// Moves `path` to the system's trash, after the dialog said yes.
+    fn trash(&mut self, path: &Path) -> Task<Message> {
+        if let Err(e) = trash::delete(path) {
+            let text = self.look.i18n.f("notice.fs_error", &[("error", &e)]);
+            self.error(text);
+            return Task::none();
+        }
+        let mut tasks = Vec::new();
+        while let Some(i) = self.tabs.iter().position(|t| t.path.starts_with(path)) {
+            tasks.push(self.remove_tab(i));
+        }
+        self.selected = None;
+        if let Some(tree) = &mut self.tree {
+            tree.refresh();
+            self.files = None;
+        }
+        Task::batch(tasks)
     }
 
     fn reveal_in_tree(&mut self, path: &Path) {
@@ -2456,7 +2810,7 @@ impl Bia {
             PaletteMode::Line
         };
         self.palette = Some(Palette { mode, query: String::new(), selected: 0 });
-        self.shelf = Shelf::Hidden;
+        self.prompt = None;
         self.refresh_palette();
         Task::batch([operation::focus(PALETTE_ID), list])
     }
@@ -2553,6 +2907,53 @@ fn word_start(rope: &ropey::Rope, cursor: usize) -> usize {
         start -= c.len_utf8();
     }
     start
+}
+
+fn fs_error_text(i18n: &I18n, e: FsError) -> String {
+    match e {
+        FsError::InvalidName => i18n.t("prompt.invalid").to_owned(),
+        FsError::Exists(name) => i18n.f("prompt.exists", &[("name", &name)]),
+        FsError::Io(e) => e.to_string(),
+    }
+}
+
+/// Shows `path` in the system's file manager, selected where the system
+/// allows it. These are programs on your machine, started and left alone
+/// (see docs/SEALED.md).
+fn reveal_in_file_manager(path: &Path) -> std::io::Result<()> {
+    use std::process::{Command, Stdio};
+    let spawn = |command: &mut Command| {
+        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(drop)
+    };
+    if cfg!(target_os = "macos") {
+        return spawn(Command::new("open").arg("-R").arg(path));
+    }
+    if cfg!(windows) {
+        let mut select = std::ffi::OsString::from("/select,");
+        select.push(path);
+        return spawn(Command::new("explorer").arg(select));
+    }
+    // The freedesktop file manager interface selects the file, in the
+    // file managers that have it (GNOME Files, Dolphin, Nemo…).
+    let shown = Command::new("dbus-send")
+        .args([
+            "--session",
+            "--print-reply",
+            "--dest=org.freedesktop.FileManager1",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1.ShowItems",
+        ])
+        .arg(format!("array:string:{}", text::file_uri(path)))
+        .arg("string:")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if shown {
+        return Ok(());
+    }
+    let folder = if path.is_dir() { path } else { path.parent().unwrap_or(path) };
+    spawn(Command::new("xdg-open").arg(folder))
 }
 
 /// Events from the terminal's thread, the same way as [`lsp_events`].

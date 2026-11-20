@@ -152,7 +152,7 @@ few things an editor can't really do without:
 | Atomic saves, line endings and BOM kept | Saving never corrupts a file or turns every line into a diff. |
 | Binary, non-UTF-8, CR-only and >16 MB files refused | Opening them as text would corrupt them or freeze the editor. |
 | Outside changes noticed on focus and on save | After a `git checkout`, you don't overwrite the new version with an old one. |
-| Create, rename and trash from the tree | Organizing files means more than looking at them. |
+| Create, rename, move, copy and trash from the tree | Organizing files means more than looking at them. Names are typed in the tree itself, a right click opens a menu (`ui/menu.rs` reports where the click was, which `mouse_area` doesn't), and rows can be dragged onto folders. `fs_ops` never replaces anything: a copy gets a free name, and a move onto a taken name fails. |
 | `bia <path>` on the command line | That's how most developers open an editor. |
 | Reopen the last folder | Opened from the app menu, BIA would otherwise start empty every time. The folder is kept in `state.json`, next to `settings.json`, so BIA never rewrites the file you edit. |
 | A test for missing translations | A missing string fails CI instead of showing up as a key. |

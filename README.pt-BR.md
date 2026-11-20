@@ -53,7 +53,7 @@ Com os comandos de instalação acima, esse aviso não aparece.
 
 ## Recursos
 
-- Árvore de arquivos com uma pasta por linha
+- Árvore de arquivos com uma pasta por linha. Crie, renomeie, mova, copie e mande para a lixeira ali mesmo, com o botão direito ou arrastando
 - Destaque de sintaxe para umas 200 linguagens, e outras com um arquivo `.sublime-syntax` ([veja como](docs/LANGUAGES.md))
 - Números de linha, abas, desfazer e refazer
 - Buscar e substituir, com maiúsculas, palavra inteira e regex

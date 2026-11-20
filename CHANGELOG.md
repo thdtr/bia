@@ -21,10 +21,22 @@ Notable changes to BIA are listed here. The format is based on
 - Drag the edge of the sidebar, or the top of the terminal panel, to resize them. BIA
   remembers the sizes.
 - Links to other files in the Markdown preview open them in BIA.
+- A right click in the file tree opens a menu to create, cut, copy, paste, duplicate,
+  rename and trash files, copy their path, show them in your file manager or open a
+  terminal in their folder.
+- Drag a file or folder onto another folder to move it, or hold Alt to copy it. Files
+  copied in a file manager can be pasted into the tree.
+- Buttons at the top of the tree create a file or a folder and collapse every folder.
+- A new file's name can have folders in it, like `src/ui/menu.rs`. They're created too.
+- The tree scrolls to the file you're editing.
+- A right click on the path in the status bar copies it.
 
 ### Changed
 
 - The terminal panel sits under the editor and leaves the sidebar its full height.
+- Names are typed in the tree itself, instead of a strip at the bottom of the sidebar.
+  When renaming, the name comes selected without its extension. Moving to the trash
+  asks in a dialog.
 - The Markdown preview opens in a tab beside the file, which you can close like any
   other tab.
 - Wide tables in the Markdown preview scroll sideways instead of being cut off.

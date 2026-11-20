@@ -68,6 +68,19 @@ impl FileTree {
         self.refresh();
     }
 
+    /// Closes every folder.
+    pub fn collapse_all(&mut self) {
+        self.expanded.clear();
+        self.refresh();
+    }
+
+    /// Opens folder `dir`, if it isn't open yet.
+    pub fn expand(&mut self, dir: &Path) {
+        if self.expanded.insert(dir.to_path_buf()) {
+            self.refresh();
+        }
+    }
+
     /// Expands every folder between the root and `path` so it becomes visible.
     pub fn reveal(&mut self, path: &Path) {
         let mut changed = false;

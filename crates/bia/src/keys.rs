@@ -79,6 +79,11 @@ pub enum Shortcut {
     Terminal,
     NewTerminal,
     Split,
+    /// Ctrl+X, Ctrl+C and Ctrl+V, when no editor, terminal or text field
+    /// took them: they act on the file tree.
+    Cut,
+    Copy,
+    Paste,
     Escape,
     Confirm,
     /// Arrow keys nothing else used: they move through lists.
@@ -140,6 +145,9 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         'p' => QuickOpen,
         'g' => GoToLine,
         'v' if shift => Preview,
+        'v' => Paste,
+        'x' => Cut,
+        'c' if !shift => Copy,
         'b' => Sidebar,
         '\\' => Split,
         ',' => Settings,

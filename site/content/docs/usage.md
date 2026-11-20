@@ -33,7 +33,13 @@ bia [PATH]...
 
 ## File tree
 
-Folders are listed first, then files, one per line. Names listed in the `hidden` setting are not shown.
+Folders are listed first, then files, one per line. Names listed in the `hidden` setting are not shown. The file you're editing is selected in the tree, and the tree scrolls to it.
+
+The buttons at the top of the sidebar create a file or a folder, collapse every folder and hide the sidebar. A right click on a file or folder opens a menu with the rest, such as cut, copy, paste, duplicate, copy the path, rename, move to the trash, show it in your file manager or open a terminal there.
+
+Names are typed right in the tree. Enter confirms and Escape cancels. A name with folders in it, like `src/ui/menu.rs`, creates the folders too. When you rename a file, its name comes selected without the extension.
+
+Drag a file or folder onto another folder to move it there, or hold Alt to copy it. Files copied in your file manager can be pasted into the tree. A copy that would take a name already in use gets another one, like `notes copy.md`, and its name field opens so you can change it. BIA never replaces a file when it creates, copies or moves one.
 
 | Action | Keys |
 |---|---|
@@ -41,7 +47,10 @@ Folders are listed first, then files, one per line. Names listed in the `hidden`
 | New folder | <kbd>Ctrl+Shift+N</kbd> |
 | Rename | <kbd>F2</kbd> |
 | Move to the trash | <kbd>Delete</kbd> |
+| Cut, copy, paste | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd> |
 | Show or hide the sidebar | <kbd>Ctrl+B</kbd> |
+
+Cut, copy and paste work in the tree after you click a folder there, since a click on a file takes you to the editor. A right click on the path in the status bar copies it.
 
 Drag the edge of the sidebar to change its width. BIA remembers the width, and whether you hid the sidebar.
 

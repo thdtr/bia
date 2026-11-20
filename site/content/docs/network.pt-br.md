@@ -40,12 +40,13 @@ O código do BIA nunca abre uma conexão de rede, nunca faz uma requisição HTT
 - **O seletor de pastas.** <kbd>Ctrl+O</kbd> pede ao sistema operacional que mostre a própria janela de seleção (o portal XDG no Linux, o AppKit no macOS, o shell no Windows). Essa janela faz parte do sistema. Abrir pastas pela linha de comando não a utiliza.
 - **Comunicação local.** No Linux, o pedido dessa janela passa pelo D-Bus, que usa um socket Unix. Trata-se de comunicação entre programas da mesma máquina, não de rede.
 - **Sessões remotas de X11 ou D-Bus.** Se `DISPLAY` ou `DBUS_SESSION_BUS_ADDRESS` apontarem para outra máquina, as bibliotecas que conversam com o ambiente gráfico seguem esse endereço por TCP. Em um desktop comum, os dois são locais.
-- **Links no Markdown.** Clicar em um link na prévia copia o endereço. O BIA não abre o navegador.
+- **Links no Markdown.** Clicar em um link da web na prévia copia o endereço. O BIA não abre o navegador. Links para arquivos do seu disco abrem no BIA.
 - **Imagens no Markdown.** A prévia não carrega imagens, locais ou remotas. Ela mostra o texto alternativo.
 - **Unidades de rede.** Ao abrir uma pasta em NFS ou SMB, quem faz o acesso à rede é o sistema operacional. O BIA apenas lê os arquivos.
 - **Programas que o BIA executa.** Alguns recursos executam outros programas, que são separados do BIA:
   - **git**, para mostrar linhas e arquivos alterados e a branch. O BIA só pede que ele leia o repositório, e desliga o que poderia fazê-lo iniciar outros programas ou acessar um servidor: hooks, o daemon fsmonitor e todo transporte (`protocol.allow=never`).
   - **Servidores de linguagem**, só os indicados em `language_servers`. O BIA não baixa nenhum, e os inicia com os downloads do cargo, go, pip e npm desligados. Veja [Servidores de linguagem](@/docs/language-servers.pt-br.md#a-rede).
+  - **O seu gerenciador de arquivos**, quando você escolhe "Mostrar no gerenciador de arquivos". O BIA só pede que ele mostre o arquivo.
   - **O seu shell**, no terminal. O que roda nele é escolha sua, inclusive acessar a rede.
 
   Para uma garantia total no Linux, `unshare -rn bia` também tira a rede de todo programa que o BIA inicia.

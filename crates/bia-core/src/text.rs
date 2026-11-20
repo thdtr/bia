@@ -77,9 +77,78 @@ pub fn location_at(line: &[char], at: usize) -> Option<(std::ops::Range<usize>, 
     Some((start..end, location))
 }
 
+/// The files a clipboard names, one per line: `file://` addresses, as file
+/// managers copy them, or absolute paths. Lines that are neither, like
+/// GNOME's `copy` header, are skipped.
+pub fn clipboard_paths(text: &str) -> Vec<std::path::PathBuf> {
+    text.lines()
+        .map(str::trim)
+        .filter_map(|line| {
+            let path = match line.strip_prefix("file://") {
+                Some(rest) => {
+                    // A host may come first; only this machine's makes sense.
+                    let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+                    let decoded = percent_decode(rest)?;
+                    // `file:///C:/x` on Windows.
+                    if cfg!(windows) { decoded.trim_start_matches('/').to_owned() } else { decoded }
+                }
+                None => line.to_owned(),
+            };
+            let path = std::path::PathBuf::from(path);
+            path.is_absolute().then_some(path)
+        })
+        .collect()
+}
+
+fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = s.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// `path` as a `file://` address, for programs that take one.
+pub fn file_uri(path: &std::path::Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    let mut uri = String::from(if text.starts_with('/') { "file://" } else { "file:///" });
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' | b':' => {
+                uri.push(byte as char);
+            }
+            _ => uri.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    uri
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn file_lists_from_the_clipboard() {
+        use std::path::PathBuf;
+        let gnome = "copy\nfile:///home/me/My%20Notes.md\nfile:///tmp/a.rs";
+        assert_eq!(
+            clipboard_paths(gnome),
+            [PathBuf::from("/home/me/My Notes.md"), PathBuf::from("/tmp/a.rs")]
+        );
+        assert_eq!(clipboard_paths("/etc/hosts"), [PathBuf::from("/etc/hosts")]);
+        assert!(clipboard_paths("just some text").is_empty());
+        assert_eq!(file_uri(std::path::Path::new("/a b/ç.md")), "file:///a%20b/%C3%A7.md");
+    }
 
     fn location(line: &str, at: usize) -> Option<(std::ops::Range<usize>, String)> {
         location_at(&line.chars().collect::<Vec<_>>(), at)

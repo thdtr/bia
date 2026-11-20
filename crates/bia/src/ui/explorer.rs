@@ -4,19 +4,25 @@
 //! (see `icons.rs`). Icons are tinted with the theme's muted color, and the
 //! file open in the editor is tinted with the accent.
 //!
+//! Creating and renaming happen in the tree itself: the name field takes
+//! the place of the row, or of a new row inside the folder. A right click
+//! opens a menu with everything you can do to a row; dragging a row onto a
+//! folder moves it there.
+//!
 //! The view is rebuilt after every message, keys typed in the editor
 //! included, so only the rows in sight (and a few around them) become
 //! widgets. Rows all have the same height; empty space stands for the rest.
 
-use super::{hint, label, style};
-use crate::app::{Bia, Message, PROMPT_ID, Prompt, PromptKind, Shelf, ShelfAction};
+use super::menu::on_right_click;
+use super::panel::icon_button;
+use super::{label, style};
+use crate::app::{Bia, Message, PROMPT_ID, PromptKind, TREE_ID, TreeAction};
 use crate::icons;
 use bia_core::{git, tree};
 use iced::widget::{
-    Column, button, column, container, mouse_area, row, rule, scrollable, space, svg, text,
-    text_input,
+    Column, column, container, mouse_area, row, scrollable, space, svg, text, text_input,
 };
-use iced::{Alignment, Element, Fill, Length, Padding};
+use iced::{Alignment, Background, Border, Element, Fill, Length, Padding, mouse};
 
 const INDENT: f32 = 14.0;
 const ICON: f32 = 16.0;
@@ -26,7 +32,7 @@ const OVERSCAN: usize = 20;
 
 /// The height of every row: the taller of the icon and a line of text,
 /// plus the padding.
-fn row_height(app: &Bia) -> f32 {
+pub(crate) fn row_height(app: &Bia) -> f32 {
     (app.settings.ui_font_size * 1.3).max(ICON) + 6.0
 }
 
@@ -51,185 +57,197 @@ pub(super) fn icon<'a>(handle: &svg::Handle, color: iced::Color) -> svg::Svg<'a>
 pub fn view(app: &Bia) -> Element<'_, Message> {
     let c = app.look.colors;
     let Some(tree) = &app.tree else { return space().into() };
+    let root = tree.root();
+    let target = app.target_dir_or_root();
 
     let header = row![
         label(app, tree.root_name()).color(c.text).wrapping(text::Wrapping::None),
         space::horizontal(),
-        button(text("⋯").size(app.settings.ui_font_size + 2.0))
-            .padding([0, 6])
-            .style(style::quiet(c))
-            .on_press(Message::ToggleShelf),
-        super::panel::icon_button(
+        icon_button(
             app,
-            "sidebar",
-            "sidebar.hide",
-            Some("Ctrl+B"),
-            Message::ToggleSidebar
+            "new-file",
+            "tree.new_file",
+            None,
+            tree_action(TreeAction::NewFile(target.clone()))
         ),
+        icon_button(
+            app,
+            "new-folder",
+            "tree.new_folder",
+            None,
+            tree_action(TreeAction::NewFolder(target))
+        ),
+        icon_button(
+            app,
+            "collapse",
+            "tree.collapse_all",
+            None,
+            tree_action(TreeAction::CollapseAll)
+        ),
+        icon_button(app, "sidebar", "sidebar.hide", Some("Ctrl+B"), Message::ToggleSidebar),
     ]
     .spacing(2)
     .align_y(Alignment::Center)
     .padding(Padding { top: 0.0, bottom: 0.0, left: 14.0, right: 8.0 })
     .height(Length::Fixed(38.0));
 
-    let open_file = app.tabs.active().map(|t| t.path.as_path());
     let height = row_height(app);
-    let all = tree.rows();
+    let rows = tree.rows();
+    // A new file or folder gets its name field as a row of its own, first
+    // inside its folder.
+    let new_entry = match app.prompt.as_ref().map(|p| &p.kind) {
+        Some(PromptKind::NewFile(dir) | PromptKind::NewFolder(dir)) if dir == root => Some((0, 0)),
+        Some(PromptKind::NewFile(dir) | PromptKind::NewFolder(dir)) => {
+            rows.iter().position(|r| &r.path == dir).map(|i| (i + 1, rows[i].depth + 1))
+        }
+        _ => None,
+    };
+    let count = rows.len() + usize::from(new_entry.is_some());
     let (offset, in_sight) = app.tree_viewport;
-    let shown = visible(all.len(), height, offset, in_sight);
-    let rows = all[shown.clone()].iter().map(|entry| {
-        let selected = app.selected.as_deref() == Some(entry.path.as_path());
-        let is_open = open_file == Some(entry.path.as_path());
-        let (chevron, kind_icon) = match (entry.is_dir, entry.expanded) {
-            (true, true) => (Some(icons::get("chevron-down")), icons::get("folder-open")),
-            (true, false) => (Some(icons::get("chevron-right")), icons::get("folder")),
-            (false, _) => (None, icons::for_file(&entry.name)),
-        };
-        let chevron: iced::Element<'_, Message> = match chevron {
-            Some(handle) => icon(handle, c.muted).into(),
-            None => space().width(ICON).into(),
-        };
-        let content = row![
-            space().width(INDENT * entry.depth as f32),
-            chevron,
-            icon(kind_icon, if is_open { c.accent } else { c.muted }),
-            {
-                let name = label(app, entry.name.as_str()).wrapping(text::Wrapping::None);
-                match app.git.files.get(&entry.path) {
-                    Some(git::FileStatus::Modified) => name.color(c.modified),
-                    Some(git::FileStatus::Added) => name.color(c.added),
-                    Some(git::FileStatus::Conflict) => name.color(c.danger),
-                    None => name,
-                }
-            },
-        ]
-        .spacing(4)
-        .align_y(Alignment::Center);
+    let shown = visible(count, height, offset, in_sight);
 
-        let press = button(content)
-            .width(Fill)
-            .height(height)
-            .padding(Padding { top: 3.0, bottom: 3.0, left: 8.0, right: 8.0 })
-            .style(style::row(c, selected))
-            .on_press(Message::RowPressed(entry.path.clone()));
-        mouse_area(press).on_right_press(Message::RowContext(entry.path.clone())).into()
+    let built = shown.clone().map(|i| match new_entry {
+        Some((at, depth)) if i == at => new_entry_row(app, depth, height),
+        Some((at, _)) if i > at => entry_row(app, &rows[i - 1], height),
+        _ => entry_row(app, &rows[i], height),
     });
-    let list: Element<'_, Message> = if all.is_empty() {
-        container(hint(app, app.look.i18n.t("explorer.empty"))).padding([4, 14]).into()
+    let list: Element<'_, Message> = if count == 0 {
+        container(super::hint(app, app.look.i18n.t("explorer.empty"))).padding([4, 14]).into()
     } else {
         let above = space().height(height * shown.start as f32);
-        let below = space().height(height * (all.len() - shown.end) as f32);
-        Column::new().push(above).extend(rows).push(below).into()
+        let below = space().height(height * (count - shown.end) as f32);
+        Column::new().push(above).extend(built).push(below).into()
     };
-    let list = scrollable(list)
+    let list = scrollable(mouse_area(list).on_exit(Message::TreeLeave))
+        .id(TREE_ID)
         .height(Fill)
         .style(style::scroll(c))
         .on_scroll(|v| Message::TreeScrolled(v.absolute_offset().y, v.bounds().height));
 
-    let mut sidebar = column![header, list];
-    if let Some(shelf) = shelf(app) {
-        sidebar = sidebar.push(rule::horizontal(1).style(style::rule(c))).push(shelf);
-    }
-
-    container(sidebar)
+    let sidebar = container(column![header, list])
         .width(Length::Fixed(app.sidebar_width()))
         .height(Fill)
-        .style(style::surface(c.panel, c.text))
-        .into()
+        .style(style::surface(c.panel, c.text));
+    // Rows only say which row a right click was on (their positions are
+    // scrolled); the sidebar opens the menu where the mouse is.
+    on_right_click(sidebar, Message::TreeMenu)
 }
 
-/// The strip under the tree with file actions and their one-line prompts.
-fn shelf(app: &Bia) -> Option<Element<'_, Message>> {
-    let c = app.look.colors;
-    let t = &app.look.i18n;
-    let pad = Padding { top: 10.0, bottom: 12.0, left: 14.0, right: 14.0 };
-
-    match &app.shelf {
-        Shelf::Hidden => None,
-        Shelf::Actions => {
-            let root = app.tree.as_ref().map(|tr| tr.root());
-            let has_target = app.selected.as_deref().is_some_and(|p| Some(p) != root);
-            let action = |key: &str, action: ShelfAction, enabled: bool, danger: bool| {
-                let color = match (enabled, danger) {
-                    (false, _) => c.border,
-                    (true, true) => c.danger,
-                    (true, false) => c.text,
-                };
-                button(label(app, t.t(key).to_owned()).color(color))
-                    .width(Fill)
-                    .padding([4, 0])
-                    .style(style::row(c, false))
-                    .on_press_maybe(enabled.then_some(Message::Shelf(action)))
-            };
-            Some(
-                container(
-                    column![
-                        hint(app, t.t("explorer.actions")),
-                        action("shelf.new_file", ShelfAction::NewFile, true, false),
-                        action("shelf.new_folder", ShelfAction::NewFolder, true, false),
-                        action("shelf.rename", ShelfAction::Rename, has_target, false),
-                        action("shelf.delete", ShelfAction::Delete, has_target, true),
-                    ]
-                    .spacing(2),
-                )
-                .padding(pad)
-                .into(),
-            )
-        }
-        Shelf::Prompt(prompt) => Some(container(prompt_view(app, prompt)).padding(pad).into()),
-    }
+fn tree_action(action: TreeAction) -> Message {
+    Message::Tree(action)
 }
 
-fn prompt_view<'a>(app: &'a Bia, prompt: &'a Prompt) -> Element<'a, Message> {
+/// One file or folder, or its name field while it's being renamed.
+fn entry_row<'a>(app: &'a Bia, entry: &'a tree::Row, height: f32) -> Element<'a, Message> {
     let c = app.look.colors;
-    let t = &app.look.i18n;
-    let relative = |p: &std::path::Path| {
-        let root = app.tree.as_ref().map(|tr| tr.root());
-        match root.and_then(|r| p.strip_prefix(r).ok()) {
-            Some(rel) if rel.as_os_str().is_empty() => tree::display_name(p),
-            Some(rel) => rel.display().to_string(),
-            None => p.display().to_string(),
-        }
+    let open_file = app.tabs.active().map(|t| t.path.as_path());
+    let is_open = open_file == Some(entry.path.as_path());
+    let (chevron, kind_icon) = match (entry.is_dir, entry.expanded) {
+        (true, true) => (Some(icons::get("chevron-down")), icons::get("folder-open")),
+        (true, false) => (Some(icons::get("chevron-right")), icons::get("folder")),
+        (false, _) => (None, icons::for_file(&entry.name)),
     };
-    let title = match &prompt.kind {
-        PromptKind::NewFile(dir) => t.f("prompt.new_file_in", &[("dir", &relative(dir))]),
-        PromptKind::NewFolder(dir) => t.f("prompt.new_folder_in", &[("dir", &relative(dir))]),
-        PromptKind::Rename(path) => t.f("prompt.rename", &[("name", &tree::display_name(path))]),
-        PromptKind::Delete(path) => t.f("prompt.delete", &[("name", &tree::display_name(path))]),
+    let chevron: Element<'_, Message> = match chevron {
+        Some(handle) => icon(handle, c.muted).into(),
+        None => space().width(ICON).into(),
     };
-
-    let mut content = column![label(app, title)].spacing(8);
-    if let PromptKind::Delete(_) = prompt.kind {
-        content = content.push(
-            row![
-                button(label(app, t.t("shelf.delete").to_owned()).color(c.danger))
-                    .padding([5, 10])
-                    .style(style::outlined(c, false))
-                    .on_press(Message::PromptSubmit),
-                button(hint(app, t.t("quit.cancel").to_owned()))
-                    .padding([5, 10])
-                    .style(style::quiet(c))
-                    .on_press(Message::Shortcut(crate::keys::Shortcut::Escape)),
-            ]
-            .spacing(8),
-        );
+    let renaming = matches!(
+        app.prompt.as_ref().map(|p| &p.kind),
+        Some(PromptKind::Rename(path)) if path == &entry.path
+    );
+    let name: Element<'_, Message> = if renaming {
+        name_field(app)
     } else {
-        content = content.push(
-            text_input("", &prompt.value)
-                .id(PROMPT_ID)
-                .on_input(Message::PromptInput)
-                .on_submit(Message::PromptSubmit)
-                .font(app.look.ui_font)
-                .size(app.settings.ui_font_size)
-                .padding([5, 8])
-                .style(style::input(c)),
-        );
-    }
-    content = match &prompt.error {
-        Some(error) => content.push(hint(app, error.as_str()).color(c.danger)),
-        None => content.push(hint(app, t.t("prompt.hint"))),
+        let name = label(app, entry.name.as_str()).wrapping(text::Wrapping::None);
+        match app.git.files.get(&entry.path) {
+            Some(git::FileStatus::Modified) => name.color(c.modified),
+            Some(git::FileStatus::Added) => name.color(c.added),
+            Some(git::FileStatus::Conflict) => name.color(c.danger),
+            None => name,
+        }
+        .into()
     };
-    content.into()
+    let content = row![
+        space().width(INDENT * entry.depth as f32),
+        chevron,
+        icon(kind_icon, if is_open { c.accent } else { c.muted }),
+        name,
+    ]
+    .spacing(4)
+    .align_y(Alignment::Center);
+
+    let selected = app.selected.as_deref() == Some(entry.path.as_path());
+    let hovered = app.tree_hover.as_deref() == Some(entry.path.as_path());
+    let drop_here = app.drop_target().as_deref() == Some(entry.path.as_path());
+    let look = container(content)
+        .width(Fill)
+        .height(height)
+        .align_y(Alignment::Center)
+        .padding(Padding { top: 3.0, bottom: 3.0, left: 8.0, right: 8.0 })
+        .style(move |_| container::Style {
+            background: (selected || hovered || drop_here).then_some(Background::Color(c.hover)),
+            border: Border {
+                color: if drop_here { c.accent } else { iced::Color::TRANSPARENT },
+                width: if drop_here { 1.0 } else { 0.0 },
+                radius: 0.0.into(),
+            },
+            ..container::Style::default()
+        });
+    if renaming {
+        return look.into();
+    }
+    let path = &entry.path;
+    let area = mouse_area(look)
+        .on_press(Message::RowDown(path.clone()))
+        .on_enter(Message::RowEnter(path.clone()))
+        .interaction(if app.tree_drag.as_ref().is_some_and(|d| d.moved) {
+            mouse::Interaction::Grabbing
+        } else {
+            mouse::Interaction::Pointer
+        });
+    on_right_click(area, move |_| Message::RowTarget(path.clone()))
+}
+
+/// The name field of a new file or folder, at `depth`.
+fn new_entry_row(app: &Bia, depth: usize, height: f32) -> Element<'_, Message> {
+    let c = app.look.colors;
+    let kind = match app.prompt.as_ref().map(|p| &p.kind) {
+        Some(PromptKind::NewFolder(_)) => icons::get("folder"),
+        _ => icons::get("file"),
+    };
+    container(
+        row![space().width(INDENT * depth as f32 + ICON), icon(kind, c.muted), name_field(app)]
+            .spacing(4)
+            .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .height(height)
+    .align_y(Alignment::Center)
+    .padding(Padding { top: 1.0, bottom: 1.0, left: 8.0, right: 8.0 })
+    .into()
+}
+
+/// The field where a name is typed. Enter confirms and Escape cancels; a
+/// name with folders in it (`src/ui/menu.rs`) creates them too.
+fn name_field(app: &Bia) -> Element<'_, Message> {
+    let c = app.look.colors;
+    let Some(prompt) = &app.prompt else { return space().into() };
+    let failed = prompt.error.is_some();
+    text_input("", &prompt.value)
+        .id(PROMPT_ID)
+        .on_input(Message::PromptInput)
+        .on_submit(Message::PromptSubmit)
+        .font(app.look.ui_font)
+        .size(app.settings.ui_font_size)
+        .padding([1, 4])
+        .style(move |theme, status| {
+            let mut style = style::input(c)(theme, status);
+            if failed {
+                style.border.color = c.danger;
+            }
+            style
+        })
+        .into()
 }
 
 #[cfg(test)]
