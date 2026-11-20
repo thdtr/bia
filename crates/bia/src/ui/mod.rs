@@ -6,7 +6,8 @@
 //! │          ├───────────────────────────────────────────┤
 //! │          │ editor                    │ md preview    │
 //! │          │                           │ (optional)    │
-//! │ (shelf)  │                                           │
+//! │          ├───────────────────────────────────────────┤
+//! │ (shelf)  │ terminal (optional)                       │
 //! ├──────────┴───────────────────────────────────────────┤
 //! │ status                                               │
 //! └──────────────────────────────────────────────────────┘
@@ -14,52 +15,41 @@
 
 mod explorer;
 mod palette;
+mod panel;
 mod search;
 pub mod style;
 mod workspace;
 
-use crate::app::{Bia, Choice, Dialog, Message, Panel};
+use crate::app::{Bia, Choice, Closing, Dialog, Message, Panel};
 use iced::widget::{
     Text, button, center, column, container, opaque, row, rule, space, stack, text, tooltip,
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
-/// Height of the terminal panel.
-const TERMINAL_HEIGHT: f32 = 260.0;
-
 pub fn view(app: &Bia) -> Element<'_, Message> {
     let c = app.look.colors;
-    let main: Element<'_, Message> = if app.tree.is_none() && app.tabs.is_empty() {
+    // The terminal sits under the editor only, so the sidebar keeps its
+    // full height.
+    let mut right = column![if app.tree.is_none() && app.tabs.is_empty() {
         welcome(app)
     } else {
-        let mut main = row![];
-        if app.sidebar && app.tree.is_some() {
-            main = main.push(match app.panel {
-                Panel::Files => explorer::view(app),
-                Panel::Search => search::view(app),
-            });
-            main = main.push(rule::vertical(1).style(style::rule(c)));
-        }
-        main.push(workspace::view(app)).height(Fill).into()
-    };
-
-    let mut body = column![main];
-    if app.terminal_open
-        && let Some(terminal) = &app.terminal
-    {
-        let view = crate::terminal_view::TerminalView::new(
-            crate::app::TERMINAL_ID,
-            terminal,
-            app.look.editor_font,
-            app.settings.font_size,
-            c,
-            Message::TermResize,
-        );
-        body = body
-            .push(rule::horizontal(1).style(style::rule(c)))
-            .push(container(view).height(Length::Fixed(TERMINAL_HEIGHT)));
+        workspace::view(app)
+    }];
+    if let Some(terminal) = panel::terminal(app) {
+        right = right.push(terminal);
     }
-    let body = body.push(rule::horizontal(1).style(style::rule(c))).push(status_bar(app));
+
+    let mut main = row![];
+    if app.sidebar && app.tree.is_some() {
+        main = main.push(match app.panel {
+            Panel::Files => explorer::view(app),
+            Panel::Search => search::view(app),
+        });
+        main = main.push(panel::sidebar_grip(app));
+    }
+    let main = main.push(right.width(Fill).height(Fill)).height(Fill);
+
+    let body = column![main, rule::horizontal(1).style(style::rule(c)), status_bar(app)];
     let base = container(body).width(Fill).height(Fill).style(style::surface(c.background, c.text));
 
     let mut layers = stack![base];
@@ -222,7 +212,7 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
         }
     }
     right = right.push(
-        button(hint(app, t.t("status.terminal")).color(if app.terminal_open {
+        button(hint(app, t.t("status.terminal")).color(if app.terminals.open {
             c.accent
         } else {
             c.muted
@@ -274,8 +264,20 @@ fn status_bar(app: &Bia) -> Element<'_, Message> {
             .push(hint(app, encoding));
     }
 
+    let mut start = row![].spacing(10).align_y(Alignment::Center);
+    if app.tree.is_some() {
+        let color = if app.sidebar { c.accent } else { c.muted };
+        let toggle = button(explorer::icon(crate::icons::get("sidebar"), color))
+            .padding(2)
+            .style(style::quiet(c))
+            .on_press(Message::ToggleSidebar);
+        let name = format!("{}   {}", t.t("sidebar.toggle"), crate::keys::label("Ctrl+B"));
+        start = start.push(tooltip(toggle, tip(app, name), tooltip::Position::Top));
+    }
+    let left = start.push(left);
+
     container(row![left, space::horizontal(), right].align_y(Alignment::Center))
-        .padding(Padding { top: 0.0, bottom: 0.0, left: 14.0, right: 14.0 })
+        .padding(Padding { top: 0.0, bottom: 0.0, left: 8.0, right: 14.0 })
         .height(Length::Fixed(26.0))
         .align_y(Alignment::Center)
         .width(Fill)
@@ -287,8 +289,15 @@ fn dialog_view<'a>(app: &'a Bia, dialog: &Dialog) -> Element<'a, Message> {
     let c = app.look.colors;
     let t = &app.look.i18n;
     let name = |path: &std::path::Path| bia_core::tree::display_name(path);
-    // (message, labels for Save / Discard, which choice is the safe default)
+    // (message, labels for Save / Discard, which choice is the safe default).
+    // Without a Save label, there are only two buttons.
     let (message, save, discard, safe) = match dialog {
+        Dialog::Busy(Closing::Quit) => {
+            (t.t("busy.quit").to_owned(), "", "busy.quit_anyway", Choice::Cancel)
+        }
+        Dialog::Busy(Closing::Terminal(_)) => {
+            (t.t("busy.terminal").to_owned(), "", "busy.close_anyway", Choice::Cancel)
+        }
         Dialog::Quit => {
             let dirty = app.tabs.dirty_indices().len();
             (
@@ -317,20 +326,15 @@ fn dialog_view<'a>(app: &'a Bia, dialog: &Dialog) -> Element<'a, Message> {
             .style(style::outlined(c, choice == safe))
             .on_press(Message::Dialog(choice))
     };
-    let card = container(
-        column![
-            label(app, message),
-            row![
-                choice(save, Choice::Save),
-                choice(discard, Choice::Discard),
-                choice("quit.cancel", Choice::Cancel),
-            ]
-            .spacing(10),
-        ]
-        .spacing(20),
-    )
-    .padding(24)
-    .style(style::card(c));
+    let mut choices = row![].spacing(10);
+    if !save.is_empty() {
+        choices = choices.push(choice(save, Choice::Save));
+    }
+    let choices =
+        choices.push(choice(discard, Choice::Discard)).push(choice("quit.cancel", Choice::Cancel));
+    let card = container(column![label(app, message), choices].spacing(20))
+        .padding(24)
+        .style(style::card(c));
 
     opaque(center(card).style(style::scrim(c)))
 }

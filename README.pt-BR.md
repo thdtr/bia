@@ -63,13 +63,14 @@ Com os comandos de instalação acima, esse aviso não aparece.
 - Comentar, mover, duplicar e apagar linhas; parênteses e aspas fecham sozinhos
 - Arquivos de qualquer tamanho abrem na hora, com número de linha
 - Indentação que segue cada arquivo: tabs ou espaços, e quantos
-- Prévia de Markdown ao vivo
+- Prévia de Markdown ao vivo, numa aba ao lado do arquivo
+- Dois arquivos lado a lado
 - Temas claro e escuro, ou o seu em JSON ([veja como](docs/THEMES.md))
 - Português e inglês
 - Salvamento seguro: gravação atômica, quebras de linha mantidas, arquivo apagado vai para a lixeira
 - Reabre os arquivos que estavam abertos e recupera o que não foi salvo depois de um travamento
 - Git: linhas alteradas ao lado dos números, arquivos alterados na árvore, a branch
-- Um painel de terminal com o seu shell
+- Terminais abaixo do editor, em abas. Ctrl+clique em `arquivo:linha` abre o arquivo
 - Servidores de linguagem que você escolhe: erros enquanto digita, completar, ir para
   a definição, hover, formatar, renomear
 
@@ -111,6 +112,8 @@ CI falha se algum código de rede entrar no projeto ([detalhes](docs/SEALED.md))
 | `F2` / `Delete` | Renomear / mandar para a lixeira |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Fonte maior / menor / original |
 | `` Ctrl+` `` | Mostrar / esconder o terminal |
+| `` Ctrl+Shift+` `` | Novo terminal |
+| `Ctrl+\` | Levar a aba para o outro lado |
 | `Ctrl+,` | Configurações |
 
 No Mac, use `Cmd` e `Option`. Substituir é `Cmd+Alt+F`. `Ctrl+Space` e ``Ctrl+` `` continuam com `Ctrl`, porque o macOS usa `Cmd` nesses dois.

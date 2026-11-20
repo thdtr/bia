@@ -85,5 +85,18 @@
   "close.discard": "Discard",
   "conflict.message": "{name} changed on disk after you opened it.",
   "conflict.overwrite": "Overwrite",
-  "conflict.reload": "Load disk version"
+  "conflict.reload": "Load disk version",
+  "notice.not_found": "Couldn't find {path}",
+  "busy.quit": "A program is still running in the terminal. Quitting will stop it.",
+  "busy.terminal": "A program is still running in this terminal. Closing it will stop the program.",
+  "busy.quit_anyway": "Quit anyway",
+  "busy.close_anyway": "Close anyway",
+  "terminal.new": "New terminal",
+  "terminal.close": "Close terminal",
+  "terminal.hide": "Hide terminal",
+  "sidebar.toggle": "Sidebar",
+  "sidebar.hide": "Hide sidebar",
+  "tabs.split": "Move to the right",
+  "tabs.unsplit": "Move to the left",
+  "tabs.preview": "Preview {name}"
 }

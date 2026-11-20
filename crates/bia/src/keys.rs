@@ -20,6 +20,8 @@
 //! | F2 / Delete           | Rename / trash selection   |
 //! | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset   |
 //! | Ctrl+`                | Show / hide the terminal   |
+//! | Ctrl+Shift+`          | New terminal               |
+//! | Ctrl+\                 | Move tab to the other side |
 //!
 //! In the editor ([`editor_command`]), besides arrows, Home, End and the
 //! clipboard:
@@ -75,6 +77,8 @@ pub enum Shortcut {
     ZoomOut,
     ZoomReset,
     Terminal,
+    NewTerminal,
+    Split,
     Escape,
     Confirm,
     /// Arrow keys nothing else used: they move through lists.
@@ -83,6 +87,13 @@ pub enum Shortcut {
 }
 
 const MAC: bool = cfg!(target_os = "macos");
+
+/// The key left of 1, whatever it types: ` on a US keyboard, ' on a
+/// Brazilian one, where ` is a dead key. Shift turns it into ~ or ".
+pub fn is_backquote(key: &Key, physical: Physical) -> bool {
+    use iced::keyboard::key::Code;
+    physical == Physical::Code(Code::Backquote) || matches!(key.to_latin(physical), Some('`' | '~'))
+}
 
 pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortcut> {
     use Shortcut::*;
@@ -106,8 +117,8 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
     }
     // Ctrl+` everywhere, as in other editors: on macOS, Cmd+` switches
     // windows.
-    if mods.control() && key.to_latin(physical) == Some('`') {
-        return Some(Terminal);
+    if mods.control() && is_backquote(key, physical) {
+        return Some(if shift { NewTerminal } else { Terminal });
     }
     if !cmd {
         return None;
@@ -130,6 +141,7 @@ pub fn shortcut(key: &Key, physical: Physical, mods: Modifiers) -> Option<Shortc
         'g' => GoToLine,
         'v' if shift => Preview,
         'b' => Sidebar,
+        '\\' => Split,
         ',' => Settings,
         'n' if shift => NewFolder,
         'n' => NewFile,

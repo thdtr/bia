@@ -1,7 +1,7 @@
 //! Find in files (Ctrl+Shift+F): the sidebar's second panel. The query runs
 //! when you press Enter; each result opens its file with the match selected.
 
-use super::explorer::{WIDTH, icon};
+use super::explorer::icon;
 use super::{hint, label, option_toggle, style};
 use crate::app::{Bia, FindOption, Message, Panel, SEARCH_ID};
 use crate::icons;
@@ -118,7 +118,7 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     }
 
     container(column![header, controls, scrollable(list).height(Fill).style(style::scroll(c))])
-        .width(Length::Fixed(WIDTH))
+        .width(Length::Fixed(app.sidebar_width()))
         .height(Fill)
         .style(style::surface(c.panel, c.text))
         .into()

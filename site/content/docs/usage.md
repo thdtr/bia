@@ -43,6 +43,8 @@ Folders are listed first, then files, one per line. Names listed in the `hidden`
 | Move to the trash | <kbd>Delete</kbd> |
 | Show or hide the sidebar | <kbd>Ctrl+B</kbd> |
 
+Drag the edge of the sidebar to change its width. BIA remembers the width, and whether you hid the sidebar.
+
 Deleted files go to the operating system's trash and can be restored from there. A file with unsaved changes cannot be moved to the trash.
 
 In a git repository, changed files are shown in one color and new files in another, along with the folders that contain them.
@@ -105,7 +107,11 @@ BIA runs your `git` for this, only to read the repository. Without git, or outsi
 
 ## Terminal
 
-<kbd>Ctrl+`</kbd>, or "Terminal" in the status bar, shows a terminal under the editor, running your shell in the open folder. Pressing it again hides the terminal; the shell keeps running.
+<kbd>Ctrl+`</kbd>, or "Terminal" in the status bar, shows the terminal under the editor, running your shell in the open folder. Pressing it again hides the panel, and the shells keep running.
+
+Each terminal has a tab at the top of the panel. <kbd>Ctrl+Shift+`</kbd> or the + button opens another one, and × closes it. Typing `exit` closes it too. On Linux and macOS, BIA asks first when a program is still running in a terminal you close, or when you quit. Drag the top edge of the panel to make it taller or shorter.
+
+Hold <kbd>Ctrl</kbd> and click a file location the terminal printed, such as `src/main.rs:42:7` or `src/app.ts(12,5)`, to open the file at that line.
 
 <kbd>Ctrl+Shift+C</kbd> and <kbd>Ctrl+Shift+V</kbd> copy and paste. <kbd>Ctrl+C</kbd> goes to the program, as in any terminal. Shortcuts such as <kbd>Ctrl+P</kbd> and <kbd>Ctrl+Tab</kbd> still work while the terminal has focus.
 
@@ -124,9 +130,13 @@ BIA detects whether each file is indented with tabs or spaces, and how wide one 
 
 Files with no indentation yet use `tab_size` from the settings. Go files and Makefiles use tabs. The status bar shows the indentation of the current file.
 
+## Two files side by side
+
+<kbd>Ctrl+\</kbd>, or the button at the right of the tabs, moves the current tab to the other side of the window, so you can see two files at once. Each side has its own tabs, and the files you open go to the side you're working on. When the last tab on the right closes, the window goes back to one side.
+
 ## Markdown preview
 
-<kbd>Ctrl+Shift+V</kbd> shows a preview of the current Markdown file next to the text. The preview follows CommonMark, with GitHub tables, task lists and strikethrough. It does not load images, and links are copied to the clipboard instead of being opened.
+<kbd>Ctrl+Shift+V</kbd> opens a preview of the current Markdown file in a tab beside it, and the preview follows what you type. Pressing it again, or closing the tab, closes the preview. The preview follows CommonMark, with GitHub tables, task lists and strikethrough. It does not load images. Links to other files open them in BIA, and web links are copied to the clipboard instead of being opened.
 
 ## Saving
 

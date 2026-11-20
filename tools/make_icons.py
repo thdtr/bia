@@ -89,6 +89,16 @@ SYMBOLS = {
         "M3.5 4.8c0 .9 2 1.6 4.5 1.6s4.5-.7 4.5-1.6",
         "M3.5 8c0 .9 2 1.6 4.5 1.6s4.5-.7 4.5-1.6",
     ),
+    "plus": stroked("M8 4v8", "M4 8h8"),
+    "close": stroked("M5 5l6 6", "M11 5l-6 6"),
+    "sidebar": stroked(
+        "M3.9 3.5h8.2a.9.9 0 0 1 .9.9v7.2a.9.9 0 0 1-.9.9H3.9a.9.9 0 0 1-.9-.9V4.4a.9.9 0 0 1 .9-.9Z",
+        "M6.5 3.5v9",
+    ),
+    "split": stroked(
+        "M3.9 3.5h8.2a.9.9 0 0 1 .9.9v7.2a.9.9 0 0 1-.9.9H3.9a.9.9 0 0 1-.9-.9V4.4a.9.9 0 0 1 .9-.9Z",
+        "M8 3.5v9",
+    ),
 }
 
 # Two letters per language. That is all that fits at 16 px.

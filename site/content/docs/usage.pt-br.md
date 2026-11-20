@@ -43,6 +43,8 @@ As pastas aparecem primeiro e depois os arquivos, um por linha. Os nomes listado
 | Mover para a lixeira | <kbd>Delete</kbd> |
 | Mostrar ou esconder a barra lateral | <kbd>Ctrl+B</kbd> |
 
+Arraste a borda da barra lateral para mudar a largura. O BIA lembra a largura e se você escondeu a barra.
+
 Os arquivos apagados vão para a lixeira do sistema operacional e podem ser restaurados de lá. Um arquivo com alterações não salvas não pode ser enviado para a lixeira.
 
 Num repositório git, os arquivos alterados aparecem numa cor e os novos em outra, assim como as pastas que os contêm.
@@ -105,7 +107,11 @@ O BIA usa o seu `git` para isso, só para ler o repositório. Sem git, ou fora d
 
 ## Terminal
 
-<kbd>Ctrl+`</kbd>, ou "Terminal" na barra de status, mostra um terminal abaixo do editor, com o seu shell na pasta aberta. Apertar de novo esconde o terminal; o shell continua rodando.
+<kbd>Ctrl+`</kbd>, ou "Terminal" na barra de status, mostra o terminal abaixo do editor, com o seu shell na pasta aberta. Apertar de novo esconde o painel, e os shells continuam rodando.
+
+Cada terminal tem uma aba no alto do painel. <kbd>Ctrl+Shift+`</kbd> ou o botão + abre outro, e o × fecha. Digitar `exit` também fecha. No Linux e no macOS, o BIA pergunta antes quando ainda tem um programa rodando no terminal que você vai fechar, ou quando você sai. Arraste a borda de cima do painel para deixá-lo mais alto ou mais baixo.
+
+Segure <kbd>Ctrl</kbd> e clique num caminho que o terminal mostrou, como `src/main.rs:42:7` ou `src/app.ts(12,5)`, para abrir o arquivo nessa linha.
 
 <kbd>Ctrl+Shift+C</kbd> e <kbd>Ctrl+Shift+V</kbd> copiam e colam. <kbd>Ctrl+C</kbd> vai para o programa, como em qualquer terminal. Atalhos como <kbd>Ctrl+P</kbd> e <kbd>Ctrl+Tab</kbd> continuam funcionando com o terminal em foco.
 
@@ -124,9 +130,13 @@ O BIA identifica se cada arquivo usa tabs ou espaços e qual é a largura de um 
 
 Arquivos que ainda não têm indentação usam o `tab_size` das configurações. Arquivos Go e Makefiles usam tabs. A barra de status mostra a indentação do arquivo atual.
 
+## Dois arquivos lado a lado
+
+<kbd>Ctrl+\</kbd>, ou o botão à direita das abas, leva a aba atual para o outro lado da janela, e assim dá para ver dois arquivos ao mesmo tempo. Cada lado tem as suas abas, e os arquivos que você abre vão para o lado em que você está trabalhando. Quando a última aba da direita fecha, a janela volta a ter um lado só.
+
 ## Prévia de Markdown
 
-<kbd>Ctrl+Shift+V</kbd> mostra a prévia do arquivo Markdown atual ao lado do texto. A prévia segue o CommonMark, com as tabelas, listas de tarefas e o tachado do GitHub. Ela não carrega imagens, e os links são copiados para a área de transferência em vez de abertos.
+<kbd>Ctrl+Shift+V</kbd> abre a prévia do arquivo Markdown atual numa aba ao lado, e a prévia acompanha o que você digita. Apertar de novo, ou fechar a aba, fecha a prévia. A prévia segue o CommonMark, com as tabelas, listas de tarefas e o tachado do GitHub. Ela não carrega imagens. Links para outros arquivos abrem no BIA, e links da web são copiados para a área de transferência em vez de abertos.
 
 ## Salvando
 

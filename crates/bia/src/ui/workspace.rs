@@ -1,11 +1,11 @@
 //! Tabs, the find bar, the editor and the Markdown preview.
 
 use super::{hint, label, logo, option_toggle, style, tip};
-use crate::app::{Bia, EDITOR_ID, FIND_ID, FindOption, Message, REPLACE_ID};
+use crate::app::{Bia, EDITOR_ID, EDITOR_RIGHT_ID, FIND_ID, FindOption, Message, REPLACE_ID};
 use crate::buffer::Buffer;
 use crate::code_view::{CodeView, CompletionList, Underline};
 use crate::keys;
-use crate::tabs::{Body, Tab};
+use crate::tabs::{Body, Pane, Tab};
 use crate::ui::style::Colors;
 use bia_core::lsp::types::Severity;
 use iced::widget::{
@@ -17,17 +17,34 @@ use std::hash::{Hash, Hasher};
 
 pub fn view(app: &Bia) -> Element<'_, Message> {
     let c = app.look.colors;
-    let Some(tab) = app.tabs.active() else {
+    if app.tabs.is_empty() {
         return container(empty(app)).width(Fill).height(Fill).into();
-    };
+    }
+    if !app.tabs.is_split() {
+        return side(app, Pane::Left);
+    }
+    row![
+        container(side(app, Pane::Left)).width(FillPortion(1)),
+        rule::vertical(1).style(style::rule(c)),
+        container(side(app, Pane::Right)).width(FillPortion(1)),
+    ]
+    .height(Fill)
+    .into()
+}
 
-    let mut col = column![tab_strip(app), rule::horizontal(1).style(style::rule(c))];
-    if let (Some(_), Body::Text(_)) = (&app.find, &tab.body) {
+/// One side of the split: its tabs and its active file.
+fn side(app: &Bia, pane: Pane) -> Element<'_, Message> {
+    let c = app.look.colors;
+    let Some((_, tab)) = app.tabs.active_in(pane) else { return space().into() };
+    let focused = pane == app.tabs.focused();
+    let mut col = column![tab_strip(app, pane), rule::horizontal(1).style(style::rule(c))];
+    if let (true, Some(_), Body::Text(_)) = (focused, &app.find, &tab.body) {
         col = col.push(find_bar(app));
     }
     col = col.push(match &tab.body {
-        Body::Text(buffer) => editor_area(app, tab, buffer),
+        Body::Text(buffer) => editor_area(app, tab, buffer, pane),
         Body::Unsupported(reason) => center(hint(app, reason.as_str())).into(),
+        Body::Preview => preview(app, tab),
     });
     col.width(Fill).height(Fill).into()
 }
@@ -54,25 +71,55 @@ fn empty(app: &Bia) -> Element<'_, Message> {
     center(column![logo(app, 36.0), space().height(22.0), list].align_x(Alignment::Center)).into()
 }
 
-fn tab_strip(app: &Bia) -> Element<'_, Message> {
+fn tab_strip(app: &Bia, pane: Pane) -> Element<'_, Message> {
     let c = app.look.colors;
-    let tabs = app.tabs.iter().enumerate().map(|(i, tab)| tab_view(app, i, tab));
+    let active = app.tabs.active_in(pane).map(|(i, _)| i);
+    let focused = pane == app.tabs.focused();
+    let tabs = app.tabs.in_pane(pane).map(|(i, tab)| {
+        let marker = match (Some(i) == active, focused) {
+            (true, true) => Some(c.accent),
+            (true, false) => Some(c.border),
+            _ => None,
+        };
+        tab_view(app, i, tab, marker)
+    });
     let strip = Row::with_children(tabs).height(Length::Fixed(36.0));
-    container(
-        scrollable(strip)
-            .direction(scrollable::Direction::Horizontal(
-                scrollable::Scrollbar::default().width(2).scroller_width(2),
-            ))
-            .style(style::scroll(c)),
-    )
-    .width(Fill)
-    .style(style::surface(c.panel, c.text))
-    .into()
+    let tabs = scrollable(strip)
+        .direction(scrollable::Direction::Horizontal(
+            scrollable::Scrollbar::default().width(2).scroller_width(2),
+        ))
+        .style(style::scroll(c))
+        .width(Fill);
+    let mut actions = row![].align_y(Alignment::Center).padding([0, 6]);
+    if let Some(index) = active {
+        let (label, keys) = match pane {
+            Pane::Left => ("tabs.split", "Ctrl+\\"),
+            Pane::Right => ("tabs.unsplit", "Ctrl+\\"),
+        };
+        actions = actions.push(super::panel::icon_button(
+            app,
+            "split",
+            label,
+            Some(keys),
+            Message::MoveToOtherSide(index),
+        ));
+    }
+    container(row![tabs, actions].align_y(Alignment::Center).height(Length::Fixed(36.0)))
+        .width(Fill)
+        .style(style::surface(c.panel, c.text))
+        .into()
 }
 
-fn tab_view<'a>(app: &'a Bia, index: usize, tab: &'a Tab) -> Element<'a, Message> {
+/// One tab. `marker` is the color of the bar under it when it is the
+/// active tab of its side: the accent on the focused side.
+fn tab_view<'a>(
+    app: &'a Bia,
+    index: usize,
+    tab: &'a Tab,
+    marker: Option<iced::Color>,
+) -> Element<'a, Message> {
     let c = app.look.colors;
-    let active = index == app.tabs.active_index();
+    let active = marker.is_some();
     let dirty = tab.is_dirty();
 
     let close = button(label(app, if dirty { "●" } else { "×" }).color(if dirty {
@@ -84,7 +131,12 @@ fn tab_view<'a>(app: &'a Bia, index: usize, tab: &'a Tab) -> Element<'a, Message
     .style(style::quiet(c))
     .on_press(Message::CloseTab(index));
 
-    let title = button(label(app, tab.name()))
+    let name = if tab.is_preview() {
+        app.look.i18n.f("tabs.preview", &[("name", &tab.name())])
+    } else {
+        tab.name()
+    };
+    let title = button(label(app, name))
         .padding(Padding { top: 9.0, bottom: 9.0, left: 14.0, right: 2.0 })
         .style(style::tab(c, active))
         .on_press(Message::SelectTab(index));
@@ -101,7 +153,7 @@ fn tab_view<'a>(app: &'a Bia, index: usize, tab: &'a Tab) -> Element<'a, Message
     let marker = container(space())
         .width(Fill)
         .height(Length::Fixed(2.0))
-        .style(style::surface(if active { c.accent } else { c.panel }, c.text));
+        .style(style::surface(marker.unwrap_or(c.panel), c.text));
 
     let tab = column![body, marker].width(Length::Shrink);
     let separator = rule::vertical(1).style(style::rule(c));
@@ -196,24 +248,30 @@ fn find_bar(app: &Bia) -> Element<'_, Message> {
     container(rows).padding([6, 12]).width(Fill).style(style::surface(c.background, c.text)).into()
 }
 
-fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a, Message> {
+fn editor_area<'a>(
+    app: &'a Bia,
+    tab: &'a Tab,
+    buffer: &'a Buffer,
+    pane: Pane,
+) -> Element<'a, Message> {
     let c = app.look.colors;
+    let focused = pane == app.tabs.focused();
     let (matches, current): (&[std::ops::Range<usize>], _) = match &app.find {
-        Some(find) => (&find.matches, find.current),
-        None => (&[], None),
+        Some(find) if focused => (&find.matches, find.current),
+        _ => (&[], None),
     };
     let mut hasher = std::hash::DefaultHasher::new();
     tab.path.hash(&mut hasher);
     let code: Element<'a, Message> =
         CodeView::new(
-            EDITOR_ID,
+            if pane == Pane::Left { EDITOR_ID } else { EDITOR_RIGHT_ID },
             &buffer.editor,
             &buffer.highlights,
             &buffer.display,
             app.syntax_context(),
             c,
-            Message::Input,
-            Message::EditorScrolled,
+            move |input| Message::Input(pane, input),
+            move |offset| Message::EditorScrolled(pane, offset),
         )
         .font(app.look.editor_font, app.settings.font_size, app.settings.line_height)
         .matches(matches, current)
@@ -246,22 +304,22 @@ fn editor_area<'a>(app: &'a Bia, tab: &'a Tab, buffer: &'a Buffer) -> Element<'a
         .scroll(hasher.finish(), tab.scroll, buffer.center)
         .into();
 
-    match (&buffer.markdown, app.is_markdown(tab)) {
-        (Some(md), true) => {
-            let preview =
-                scrollable(container(markdown_view(app, md)).padding([24, 32]).max_width(760.0))
-                    .height(Fill)
-                    .style(style::scroll(c));
-            row![
-                container(code).width(FillPortion(1)),
-                rule::vertical(1).style(style::rule(c)),
-                container(preview).width(FillPortion(1)).height(Fill),
-            ]
-            .height(Fill)
-            .into()
-        }
-        _ => code,
-    }
+    code
+}
+
+/// A preview tab: the Markdown of the file open in another tab, kept up to
+/// date as you type there.
+fn preview<'a>(app: &'a Bia, tab: &'a Tab) -> Element<'a, Message> {
+    let c = app.look.colors;
+    let source = app.tabs.position(&tab.path).and_then(|i| app.tabs.iter().nth(i));
+    let Some(md) = source.and_then(Tab::buffer).and_then(|b| b.markdown.as_ref()) else {
+        return space().into();
+    };
+    scrollable(container(markdown_view(app, md)).padding([24, 32]).max_width(760.0))
+        .width(Fill)
+        .height(Fill)
+        .style(style::scroll(c))
+        .into()
 }
 
 fn markdown_view<'a>(app: &'a Bia, md: &'a markdown::Content) -> Element<'a, Message> {
@@ -325,6 +383,21 @@ impl<'a> markdown::Viewer<'a, Message> for Viewer {
                 .into()
         }));
         container(lines).width(Fill).padding(settings.code_size.0).style(self.boxed()).into()
+    }
+
+    /// A table wider than the preview scrolls sideways instead of being cut.
+    fn table(
+        &self,
+        settings: markdown::Settings,
+        columns: &'a [markdown::Column],
+        rows: &'a [markdown::Row],
+    ) -> Element<'a, Message> {
+        scrollable(markdown::table(self, settings, columns, rows))
+            .direction(scrollable::Direction::Horizontal(
+                scrollable::Scrollbar::default().width(4).scroller_width(4),
+            ))
+            .style(style::scroll(self.colors))
+            .into()
     }
 
     /// BIA does not load images (they may be remote): show the alt text.

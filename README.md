@@ -61,13 +61,14 @@ The install commands above don't trigger this warning.
 - Comment, move, duplicate and delete lines; brackets and quotes close themselves
 - Files of any length open at once, line numbers included
 - Indentation that follows each file: tabs or spaces, and how many
-- Live Markdown preview
+- Live Markdown preview, in a tab beside the file
+- Two files side by side
 - Dark and light themes, or your own in JSON ([how](docs/THEMES.md))
 - English and Portuguese
 - Safe saves: atomic writes, line endings kept, deleted files go to the trash
 - Reopens the files you left open, and brings back unsaved edits after a crash
 - Git: changed lines beside the line numbers, changed files in the tree, the branch
-- A terminal panel with your shell
+- Terminals under the editor, in tabs. Ctrl+click on `file:line` opens it
 - Language servers you choose: errors as you type, completion, go to definition,
   hover, format, rename
 
@@ -109,6 +110,8 @@ fails if network code ever gets into the project ([details](docs/SEALED.md)).
 | `F2` / `Delete` | Rename / move to trash |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Bigger / smaller / reset font |
 | `` Ctrl+` `` | Show / hide the terminal |
+| `` Ctrl+Shift+` `` | New terminal |
+| `Ctrl+\` | Move the tab to the other side |
 | `Ctrl+,` | Settings |
 
 On a Mac, use `Cmd` and `Option`. Replace is `Cmd+Alt+F`. `Ctrl+Space` and ``Ctrl+` `` stay `Ctrl`, since macOS takes `Cmd` for those.

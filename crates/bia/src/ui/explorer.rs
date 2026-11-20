@@ -18,7 +18,6 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
-pub(super) const WIDTH: f32 = 248.0;
 const INDENT: f32 = 14.0;
 const ICON: f32 = 16.0;
 /// Rows built above and below the ones in sight, so a quick scroll doesn't
@@ -54,13 +53,21 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     let Some(tree) = &app.tree else { return space().into() };
 
     let header = row![
-        label(app, tree.root_name()).color(c.text),
+        label(app, tree.root_name()).color(c.text).wrapping(text::Wrapping::None),
         space::horizontal(),
         button(text("⋯").size(app.settings.ui_font_size + 2.0))
             .padding([0, 6])
             .style(style::quiet(c))
             .on_press(Message::ToggleShelf),
+        super::panel::icon_button(
+            app,
+            "sidebar",
+            "sidebar.hide",
+            Some("Ctrl+B"),
+            Message::ToggleSidebar
+        ),
     ]
+    .spacing(2)
     .align_y(Alignment::Center)
     .padding(Padding { top: 0.0, bottom: 0.0, left: 14.0, right: 8.0 })
     .height(Length::Fixed(38.0));
@@ -125,7 +132,7 @@ pub fn view(app: &Bia) -> Element<'_, Message> {
     }
 
     container(sidebar)
-        .width(Length::Fixed(WIDTH))
+        .width(Length::Fixed(app.sidebar_width()))
         .height(Fill)
         .style(style::surface(c.panel, c.text))
         .into()

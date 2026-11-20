@@ -14,8 +14,8 @@ use crate::fonts;
 use crate::keys::{self, Shortcut};
 use crate::lsp::{Effect, Lsp};
 use crate::syntax;
-use crate::tabs::{Body, Tab, Tabs};
-use crate::terminal::{TermEvent, Terminal};
+use crate::tabs::{Body, Pane, Tab, Tabs};
+use crate::terminal::{TermEvent, Terminal, Terminals};
 use crate::ui::{self, style::Colors};
 use bia_core::backup;
 use bia_core::document::{self, Document, LoadError};
@@ -29,7 +29,7 @@ use bia_core::language::{
 };
 use bia_core::search::{self, Found, Matcher, QueryError};
 use bia_core::settings::{Settings, SettingsError};
-use bia_core::state::{OpenFile, Session, State};
+use bia_core::state::{self, OpenFile, Session, State};
 use bia_core::text;
 use bia_core::theme::Theme as BiaTheme;
 use bia_core::tree::{self, FileTree};
@@ -44,6 +44,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub const EDITOR_ID: &str = "bia-editor";
+/// The editor on the right side of a split.
+pub const EDITOR_RIGHT_ID: &str = "bia-editor-right";
 pub const PROMPT_ID: &str = "bia-prompt";
 pub const FIND_ID: &str = "bia-find";
 pub const REPLACE_ID: &str = "bia-replace";
@@ -117,10 +119,23 @@ pub enum Message {
     FindDone(Arc<FindResult>),
     /// The open folder's files, listed in the background.
     FilesListed(Arc<FileList>),
-    TermChannel(iced::futures::channel::mpsc::UnboundedSender<TermEvent>),
-    Term(TermEvent),
-    TermResize(crate::terminal::Size),
+    TermChannel(iced::futures::channel::mpsc::UnboundedSender<(u64, TermEvent)>),
+    Term(u64, TermEvent),
+    TermResize(u64, crate::terminal::Size),
+    /// Time to see which program runs in front of each terminal.
+    LookAtTerminals,
     ToggleTerminal,
+    NewTerminal,
+    SelectTerminal(u64),
+    CloseTerminal(u64),
+    /// Ctrl+click on a file location in terminal `id`.
+    TermOpen(u64, String),
+    ToggleSidebar,
+    /// A divider was pressed, to drag it.
+    DragStart(Splitter),
+    Dragged(iced::Point),
+    DragEnd,
+    WindowResized(iced::Size),
     RowPressed(PathBuf),
     /// The file tree scrolled: offset and height of what's in sight.
     TreeScrolled(f32, f32),
@@ -131,7 +146,8 @@ pub enum Message {
     PromptSubmit,
     SelectTab(usize),
     CloseTab(usize),
-    Input(Input),
+    /// What the editor on one side of the split was told to do.
+    Input(Pane, Input),
     Save,
     TogglePreview,
     LinkClicked(String),
@@ -156,7 +172,9 @@ pub enum Message {
     CloseRequested,
     Dialog(Choice),
     OpenSettings,
-    EditorScrolled(Vector),
+    EditorScrolled(Pane, Vector),
+    /// Ctrl+\: moves a tab to the other side of the split.
+    MoveToOtherSide(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,8 +185,30 @@ pub enum ShelfAction {
     Delete,
 }
 
+/// The dividers you can drag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Splitter {
+    /// Between the sidebar and the editor.
+    Sidebar,
+    /// Above the terminal panel.
+    Terminal,
+}
+
+/// A divider being dragged: where the mouse was when it started to move,
+/// and the size it had then.
+struct Drag {
+    splitter: Splitter,
+    from: Option<iced::Point>,
+    size: f32,
+}
+
+pub const SIDEBAR_WIDTH: f32 = 248.0;
+pub const TERMINAL_HEIGHT: f32 = 260.0;
+
 /// A question that blocks everything else until it is answered.
 pub enum Dialog {
+    /// A program is running in a terminal that is about to close.
+    Busy(Closing),
     /// Quitting with unsaved files: save all, discard, cancel.
     Quit,
     /// Closing a tab with unsaved changes: save, discard, cancel.
@@ -176,6 +216,13 @@ pub enum Dialog {
     /// Saving a file that changed on disk since it was opened: overwrite,
     /// load the disk version, cancel.
     Conflict(PathBuf),
+}
+
+/// What would stop a program running in a terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Closing {
+    Quit,
+    Terminal(u64),
 }
 
 /// The answer to a [`Dialog`]. What `Save` and `Discard` mean depends on it.
@@ -379,11 +426,15 @@ pub struct Bia {
     /// What git says about the open folder; empty outside a repository.
     pub git: Arc<git::Status>,
     pub lsp: Lsp,
-    /// The shell in the bottom panel, once opened. It keeps running while
-    /// the panel is hidden.
-    pub terminal: Option<Terminal>,
-    pub terminal_open: bool,
-    term_events: Option<iced::futures::channel::mpsc::UnboundedSender<TermEvent>>,
+    /// The shells in the bottom panel. They keep running while the panel
+    /// is hidden.
+    pub terminals: Terminals,
+    term_events: Option<iced::futures::channel::mpsc::UnboundedSender<(u64, TermEvent)>>,
+    pub sidebar_width: f32,
+    pub terminal_height: f32,
+    drag: Option<Drag>,
+    /// The size of the window's content.
+    window: iced::Size,
     pub dialog: Option<Dialog>,
     /// `font_size` as settings.json has it, while zoom changes the live one.
     font_size_setting: f32,
@@ -430,13 +481,16 @@ impl Bia {
             find: None,
             palette: None,
             notice: None,
-            sidebar: true,
+            sidebar: !state.layout.sidebar_hidden,
+            sidebar_width: state.layout.sidebar_width.unwrap_or(SIDEBAR_WIDTH),
+            terminal_height: state.layout.terminal_height.unwrap_or(TERMINAL_HEIGHT),
+            drag: None,
+            window: iced::Size::new(1200.0, 800.0),
             panel: Panel::Files,
             project_search: ProjectSearch::default(),
             git: Arc::default(),
             lsp: Lsp::default(),
-            terminal: None,
-            terminal_open: false,
+            terminals: Terminals::default(),
             term_events: None,
             dialog: None,
         };
@@ -511,6 +565,9 @@ impl Bia {
         let keys = event::listen_with(|event, status, _window| match event {
             Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
             Event::Window(window::Event::CloseRequested) => Some(Message::CloseRequested),
+            Event::Window(window::Event::Opened { size, .. } | window::Event::Resized(size)) => {
+                Some(Message::WindowResized(size))
+            }
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key, physical_key, modifiers, ..
             }) => {
@@ -521,8 +578,21 @@ impl Bia {
             }
             _ => None,
         });
+        // The mouse is followed only while a divider is being dragged.
+        let drag = if self.drag.is_some() {
+            event::listen_with(|event, _, _| match event {
+                Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                    Some(Message::Dragged(position))
+                }
+                Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(Message::DragEnd),
+                _ => None,
+            })
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
             keys,
+            drag,
             Subscription::run(lsp_events),
             Subscription::run(terminal_events),
         ])
@@ -637,15 +707,24 @@ impl Bia {
             Message::SelectTab(index) => {
                 if self.tabs.select(index) {
                     self.reveal_active();
-                    return operation::focus(EDITOR_ID);
+                    return self.focus_editor();
                 }
             }
             Message::CloseTab(index) => return self.close_tab(index),
 
-            Message::Input(input) => {
+            Message::Input(pane, input) => {
                 // The text stays as it was while a dialog asks about it.
                 if self.dialog.is_some() {
                     return Task::none();
+                }
+                // Resting the mouse on the other side doesn't move the focus.
+                if pane != self.tabs.focused() {
+                    if matches!(input, Input::Hover(_)) {
+                        return Task::none();
+                    }
+                    self.tabs.focus(pane);
+                    self.find = None;
+                    self.reveal_active();
                 }
                 let typed = match &input {
                     Input::Text(text) => text.chars().last(),
@@ -736,35 +815,80 @@ impl Bia {
                 }
             }
             Message::TermChannel(sender) => self.term_events = Some(sender),
-            Message::Term(event) => match event {
-                // New output: the view redraws after any message.
-                TermEvent::Wakeup => {}
+            Message::Term(id, event) => match event {
+                // New output: the view redraws after any message. The program
+                // in front may have changed too.
+                TermEvent::Wakeup => {
+                    let later = self.terminals.get_mut(id).is_some_and(|t| t.look_at_program());
+                    if later && !self.terminals.look_scheduled {
+                        self.terminals.look_scheduled = true;
+                        return Task::perform(sleep(crate::terminal::LOOK_EVERY), |()| {
+                            Message::LookAtTerminals
+                        });
+                    }
+                }
                 TermEvent::Title(title) => {
-                    if let Some(t) = &mut self.terminal {
+                    if let Some(t) = self.terminals.get_mut(id) {
                         t.title = title;
                     }
                 }
                 TermEvent::Reply(text) => {
-                    if let Some(t) = &self.terminal {
+                    if let Some(t) = self.terminals.get(id) {
                         t.write(text.into_bytes());
                     }
                 }
                 TermEvent::Copy(text) => return iced::clipboard::write(text),
-                TermEvent::Exit => {
-                    self.terminal = None;
-                    self.terminal_open = false;
-                    return operation::focus(EDITOR_ID);
-                }
+                // `exit` or Ctrl+D: the tab goes away with its shell.
+                TermEvent::Exit => return self.close_terminal(id),
             },
-            Message::TermResize(size) => {
-                if let Some(t) = &mut self.terminal {
+            Message::TermResize(id, size) => {
+                if let Some(t) = self.terminals.get_mut(id) {
                     t.resize(size);
                 }
             }
+            Message::LookAtTerminals => {
+                self.terminals.look_scheduled = false;
+                for t in &mut self.terminals.list {
+                    t.look_again();
+                }
+            }
             Message::ToggleTerminal => return self.toggle_terminal(),
-            Message::EditorScrolled(offset) => {
-                if let Some(tab) = self.tabs.active_mut() {
+            Message::NewTerminal => return self.new_terminal(),
+            Message::SelectTerminal(id) => {
+                self.terminals.select(id);
+                return operation::focus(TERMINAL_ID);
+            }
+            Message::CloseTerminal(id) => {
+                if self.terminals.get(id).is_some_and(Terminal::busy) {
+                    self.dialog = Some(Dialog::Busy(Closing::Terminal(id)));
+                    return Task::none();
+                }
+                return self.close_terminal(id);
+            }
+            Message::TermOpen(id, location) => return self.open_location(id, &location),
+            Message::ToggleSidebar => self.toggle_sidebar(),
+            Message::DragStart(splitter) => {
+                let size = match splitter {
+                    Splitter::Sidebar => self.sidebar_width,
+                    Splitter::Terminal => self.terminal_height,
+                };
+                self.drag = Some(Drag { splitter, from: None, size });
+            }
+            Message::Dragged(at) => self.dragged(at),
+            Message::DragEnd => {
+                self.drag = None;
+                self.save_layout();
+            }
+            Message::WindowResized(size) => self.window = size,
+            Message::EditorScrolled(pane, offset) => {
+                if let Some(tab) = self.tabs.active_in_mut(pane) {
                     tab.scroll = offset;
+                }
+            }
+            Message::MoveToOtherSide(index) => {
+                if self.tabs.move_to_other(index) {
+                    self.reveal_active();
+                    return self.focus_editor();
                 }
             }
             Message::Save => {
@@ -788,21 +912,8 @@ impl Bia {
                     self.git = status;
                 }
             }
-            Message::TogglePreview => {
-                let is_md = self.tabs.active().is_some_and(|t| self.is_markdown(t));
-                if let Some(buffer) = self.active_buffer_mut().filter(|_| is_md) {
-                    let on = buffer.markdown.is_none();
-                    buffer.set_preview(on);
-                    // The editor moves into a new layout and starts unfocused.
-                    return operation::focus(EDITOR_ID);
-                }
-            }
-            Message::LinkClicked(url) => {
-                // BIA never opens URLs itself (see docs/SEALED.md). The link is
-                // copied so you can open it wherever you choose.
-                self.info(url.clone());
-                return iced::clipboard::write(url);
-            }
+            Message::TogglePreview => return self.toggle_preview(),
+            Message::LinkClicked(url) => return self.link_clicked(url),
 
             Message::FindInput(query) => {
                 let old = self.find.take();
@@ -884,7 +995,7 @@ impl Bia {
             }
             Message::PaletteClose => {
                 self.palette = None;
-                return operation::focus(EDITOR_ID);
+                return self.focus_editor();
             }
 
             Message::Shortcut(shortcut) => return self.shortcut(shortcut),
@@ -893,13 +1004,7 @@ impl Bia {
                 // Commits and checkouts happen in other windows.
                 return self.refresh_git();
             }
-            Message::CloseRequested => {
-                if self.tabs.any_dirty() {
-                    self.dialog = Some(Dialog::Quit);
-                } else {
-                    return self.exit();
-                }
-            }
+            Message::CloseRequested => return self.quit(true),
             Message::Dialog(choice) => return self.answer(choice),
             Message::OpenSettings => return self.open(paths::settings_file()),
         }
@@ -958,7 +1063,7 @@ impl Bia {
                 }
             }
             Shortcut::Preview => return self.update(Message::TogglePreview),
-            Shortcut::Sidebar => self.sidebar = !self.sidebar,
+            Shortcut::Sidebar => self.toggle_sidebar(),
             Shortcut::NextTab | Shortcut::PreviousTab => {
                 if let Some(i) = self.tabs.neighbor(shortcut == Shortcut::NextTab) {
                     return self.update(Message::SelectTab(i));
@@ -969,6 +1074,10 @@ impl Bia {
             Shortcut::ZoomOut => self.zoom(Some(-1.0)),
             Shortcut::ZoomReset => self.zoom(None),
             Shortcut::Terminal => return self.toggle_terminal(),
+            Shortcut::NewTerminal => return self.new_terminal(),
+            Shortcut::Split => {
+                return self.update(Message::MoveToOtherSide(self.tabs.active_index()));
+            }
             Shortcut::NewFile => return self.shelf_action(ShelfAction::NewFile),
             Shortcut::NewFolder => return self.shelf_action(ShelfAction::NewFolder),
             Shortcut::Rename => return self.shelf_action(ShelfAction::Rename),
@@ -988,7 +1097,7 @@ impl Bia {
                     self.shelf = Shelf::Hidden;
                 } else if self.find.is_some() {
                     self.find = None;
-                    return operation::focus(EDITOR_ID);
+                    return self.focus_editor();
                 }
             }
         }
@@ -1039,39 +1148,152 @@ impl Bia {
         Task::batch([restore, self.refresh_git()])
     }
 
+    /// Puts the keyboard in the editor of the focused side.
+    fn focus_editor(&self) -> Task<Message> {
+        operation::focus(match self.tabs.focused() {
+            Pane::Left => EDITOR_ID,
+            Pane::Right => EDITOR_RIGHT_ID,
+        })
+    }
+
     // ── Terminal ─────────────────────────────────────────────────────────
 
-    /// Ctrl+`: shows the terminal (starting the shell the first time) or
-    /// hides it, moving the focus there and back.
+    /// Ctrl+`: shows the terminal panel (starting a shell the first time)
+    /// or hides it, moving the focus there and back.
     fn toggle_terminal(&mut self) -> Task<Message> {
-        if self.terminal_open {
-            self.terminal_open = false;
-            return operation::focus(EDITOR_ID);
+        if self.terminals.open {
+            self.terminals.open = false;
+            return self.focus_editor();
         }
-        if self.terminal.is_none() {
-            let Some(events) = self.term_events.clone() else { return Task::none() };
-            let dir = self
-                .tree
-                .as_ref()
-                .map(|t| t.root().to_path_buf())
-                .or_else(|| {
-                    std::env::var_os("HOME")
-                        .or_else(|| std::env::var_os("USERPROFILE"))
-                        .map(PathBuf::from)
-                })
-                .unwrap_or_else(|| PathBuf::from("."));
-            let size = crate::terminal::Size { columns: 80, lines: 12 };
-            match Terminal::spawn(&dir, size, events) {
-                Ok(terminal) => self.terminal = Some(terminal),
-                Err(e) => {
-                    let text = self.look.i18n.f("notice.terminal_failed", &[("error", &e)]);
-                    self.error(text);
-                    return Task::none();
-                }
+        if self.terminals.list.is_empty() {
+            return self.new_terminal();
+        }
+        self.terminals.open = true;
+        operation::focus(TERMINAL_ID)
+    }
+
+    /// Ctrl+Shift+` or the + button: another shell, in a new tab.
+    fn new_terminal(&mut self) -> Task<Message> {
+        let Some(events) = self.term_events.clone() else { return Task::none() };
+        let dir = self
+            .tree
+            .as_ref()
+            .map(|t| t.root().to_path_buf())
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .or_else(|| std::env::var_os("USERPROFILE"))
+                    .map(PathBuf::from)
+            })
+            .unwrap_or_else(|| PathBuf::from("."));
+        let size = crate::terminal::Size { columns: 80, lines: 12 };
+        let id = self.terminals.next_id();
+        match Terminal::spawn(id, &dir, size, events) {
+            Ok(terminal) => self.terminals.push(terminal),
+            Err(e) => {
+                let text = self.look.i18n.f("notice.terminal_failed", &[("error", &e)]);
+                self.error(text);
+                return Task::none();
             }
         }
-        self.terminal_open = true;
         operation::focus(TERMINAL_ID)
+    }
+
+    fn close_terminal(&mut self, id: u64) -> Task<Message> {
+        self.terminals.remove(id);
+        if self.terminals.open { operation::focus(TERMINAL_ID) } else { self.focus_editor() }
+    }
+
+    /// Opens a location clicked in a terminal. Relative paths start from
+    /// the folder the shell is in, then from the open folder.
+    fn open_location(&mut self, id: u64, location: &str) -> Task<Message> {
+        let (path, at) = text::split_location(location);
+        let path = Path::new(path);
+        let mut bases = Vec::new();
+        if let Some(t) = self.terminals.get(id) {
+            bases.push(t.cwd());
+        }
+        if let Some(tree) = &self.tree {
+            bases.push(tree.root().to_path_buf());
+        }
+        let found = if path.is_absolute() {
+            Some(path.to_path_buf()).filter(|p| p.is_file())
+        } else {
+            bases.iter().map(|base| base.join(path)).find(|p| p.is_file())
+        };
+        match found {
+            Some(file) => {
+                let file = fs::canonicalize(&file).unwrap_or(file);
+                self.open_at(file, at)
+            }
+            None => {
+                let text = self.look.i18n.f("notice.not_found", &[("path", &location)]);
+                self.error(text);
+                Task::none()
+            }
+        }
+    }
+
+    // ── Layout ───────────────────────────────────────────────────────────
+
+    fn toggle_sidebar(&mut self) {
+        self.sidebar = !self.sidebar;
+        self.save_layout();
+    }
+
+    /// The mouse moved while a divider is held: the panel follows it, but
+    /// leaves the editor some room.
+    fn dragged(&mut self, at: iced::Point) {
+        let window = self.window;
+        let Some(drag) = &mut self.drag else { return };
+        let Some(from) = drag.from else {
+            drag.from = Some(at);
+            return;
+        };
+        match drag.splitter {
+            Splitter::Sidebar => {
+                let most = (window.width - 320.0).max(160.0);
+                self.sidebar_width = (drag.size + at.x - from.x).clamp(160.0, most);
+            }
+            Splitter::Terminal => {
+                let most = (window.height - 180.0).max(90.0);
+                self.terminal_height = (drag.size + from.y - at.y).clamp(90.0, most);
+            }
+        }
+    }
+
+    /// The sizes the sidebar and the terminal take on screen, kept inside
+    /// a window that may have shrunk since they were set.
+    pub fn sidebar_width(&self) -> f32 {
+        self.sidebar_width.min((self.window.width - 320.0).max(160.0))
+    }
+
+    pub fn terminal_height(&self) -> f32 {
+        self.terminal_height.min((self.window.height - 180.0).max(90.0))
+    }
+
+    fn save_layout(&self) {
+        let layout = state::Layout {
+            sidebar_width: Some(self.sidebar_width),
+            sidebar_hidden: !self.sidebar,
+            terminal_height: Some(self.terminal_height),
+        };
+        // Not worth an error: the worst case is the default sizes next time.
+        let _ = State::update(&paths::state_file(), |state| state.layout = layout);
+    }
+
+    // ── Quitting ─────────────────────────────────────────────────────────
+
+    /// Closing the window: first a program running in a terminal, then
+    /// unsaved files, each asks before anything is lost.
+    fn quit(&mut self, check_terminals: bool) -> Task<Message> {
+        if check_terminals && self.terminals.any_busy() {
+            self.dialog = Some(Dialog::Busy(Closing::Quit));
+        } else if self.tabs.any_dirty() {
+            self.dialog = Some(Dialog::Quit);
+        } else {
+            return self.exit();
+        }
+        Task::none()
     }
 
     // ── Language servers ─────────────────────────────────────────────────
@@ -1372,7 +1594,7 @@ impl Bia {
             self.tabs.select(i);
         }
         self.reveal_active();
-        operation::focus(EDITOR_ID)
+        self.focus_editor()
     }
 
     /// Writes the workspace's open files to `state.json`.
@@ -1382,7 +1604,8 @@ impl Bia {
             return;
         };
         // Tabs from other folders (settings.json, say) aren't part of it.
-        let mine: Vec<&Tab> = self.tabs.iter().filter(|t| t.path.starts_with(root)).collect();
+        let mine: Vec<&Tab> =
+            self.tabs.iter().filter(|t| t.path.starts_with(root) && !t.is_preview()).collect();
         let files: Vec<OpenFile> = mine
             .iter()
             .map(|t| {
@@ -1501,7 +1724,54 @@ impl Bia {
         self.tabs.insert(tab);
         self.reveal_active();
         self.sync_lsp();
-        Task::batch([operation::focus(EDITOR_ID)].into_iter().chain(base))
+        Task::batch([self.focus_editor()].into_iter().chain(base))
+    }
+
+    /// Ctrl+Shift+V on a Markdown file: opens its preview on the other side
+    /// of the split, or closes it. On a preview tab, closes it.
+    fn toggle_preview(&mut self) -> Task<Message> {
+        let Some(tab) = self.tabs.active() else { return Task::none() };
+        if tab.is_preview() {
+            return self.remove_tab(self.tabs.active_index());
+        }
+        if !self.is_markdown(tab) {
+            return Task::none();
+        }
+        let path = tab.path.clone();
+        if let Some(preview) = self.tabs.preview_of(&path) {
+            return self.remove_tab(preview);
+        }
+        if let Some(buffer) = self.active_buffer_mut() {
+            buffer.set_preview(true);
+        }
+        self.tabs.insert_beside(Tab::new(path, Body::Preview));
+        Task::none()
+    }
+
+    /// A link in a preview. A link to another file opens it here; BIA never
+    /// opens web addresses itself (see docs/SEALED.md), so those are
+    /// copied for you to open wherever you like.
+    fn link_clicked(&mut self, url: String) -> Task<Message> {
+        if url.starts_with('#') {
+            return Task::none();
+        }
+        let is_web = url.contains("://") || url.starts_with("mailto:");
+        if !is_web {
+            let target = url.split(['#', '?']).next().unwrap_or_default().replace("%20", " ");
+            // The previews in sight are the ones the click could come from.
+            let found = [Pane::Left, Pane::Right]
+                .into_iter()
+                .filter_map(|pane| self.tabs.active_in(pane))
+                .filter(|(_, t)| t.is_preview())
+                .filter_map(|(_, t)| t.path.parent().map(|dir| dir.join(&target)))
+                .find(|p| p.is_file());
+            if let Some(file) = found {
+                let file = fs::canonicalize(&file).unwrap_or(file);
+                return self.open(file);
+            }
+        }
+        self.info(url.clone());
+        iced::clipboard::write(url)
     }
 
     /// Puts back unsaved edits to `path` left in `backups/`.
@@ -1553,9 +1823,19 @@ impl Bia {
     }
 
     fn remove_tab(&mut self, index: usize) -> Task<Message> {
-        if let Some(tab) = self.tabs.remove(index)
-            && tab.backup.is_some()
-        {
+        let Some(tab) = self.tabs.remove(index) else { return Task::none() };
+        if tab.is_preview() {
+            // Nobody looks at the rendered Markdown anymore.
+            if let Some(i) = self.tabs.position(&tab.path)
+                && let Some(buffer) = self.tabs.get_mut(i).and_then(Tab::buffer_mut)
+            {
+                buffer.set_preview(false);
+            }
+        } else if let Some(preview) = self.tabs.preview_of(&tab.path) {
+            // A preview goes with its file.
+            self.tabs.remove(preview);
+        }
+        if tab.backup.is_some() {
             self.backups.remove(tab.path);
         }
         if self.tabs.is_empty() {
@@ -1569,6 +1849,8 @@ impl Bia {
         let Some(dialog) = self.dialog.take() else { return Task::none() };
         match (dialog, choice) {
             (_, Choice::Cancel) => {}
+            (Dialog::Busy(Closing::Quit), _) => return self.quit(false),
+            (Dialog::Busy(Closing::Terminal(id)), _) => return self.close_terminal(id),
             (Dialog::Quit, Choice::Save) => {
                 let all_saved = self.tabs.dirty_indices().into_iter().all(|i| self.save(i, false));
                 if all_saved {
@@ -1741,7 +2023,7 @@ impl Bia {
         let Some(buffer) = self.active_buffer_mut() else { return Task::none() };
         buffer.go_to(line, column);
         buffer.center = seq;
-        operation::focus(EDITOR_ID)
+        self.focus_editor()
     }
 
     // ── Explorer actions ─────────────────────────────────────────────────
@@ -2028,7 +2310,7 @@ impl Bia {
         }
         match (current, to_editor) {
             (None, _) => Task::none(),
-            (Some(_), true) => operation::focus(EDITOR_ID),
+            (Some(_), true) => self.focus_editor(),
             (Some(_), false) => Task::none(),
         }
     }
@@ -2219,7 +2501,7 @@ impl Bia {
             {
                 self.lsp.rename(&path, buffer.editor.rope(), at, &name);
             }
-            return operation::focus(EDITOR_ID);
+            return self.focus_editor();
         }
         let (line, column) = match &palette.mode {
             // `42` or `42:7`
@@ -2279,8 +2561,8 @@ fn terminal_events() -> impl iced::futures::Stream<Item = Message> {
     iced::stream::channel(64, async |mut output| {
         let (sender, mut events) = iced::futures::channel::mpsc::unbounded();
         let _ = output.send(Message::TermChannel(sender)).await;
-        while let Some(event) = events.next().await {
-            let _ = output.send(Message::Term(event)).await;
+        while let Some((id, event)) = events.next().await {
+            let _ = output.send(Message::Term(id, event)).await;
         }
     })
 }

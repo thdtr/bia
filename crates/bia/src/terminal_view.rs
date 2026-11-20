@@ -1,6 +1,9 @@
 //! Draws a [`Terminal`]'s screen and sends it keys, the mouse wheel,
 //! selections and pastes. Runs of cells with the same look become one
 //! cached `Paragraph`, placed at their column so the grid stays aligned.
+//!
+//! Holding Ctrl (Cmd on a Mac) underlines a file location under the mouse,
+//! like `src/main.rs:42:7`, and a click opens it in the editor.
 
 use crate::fonts;
 use crate::frame_cache::FrameCache;
@@ -40,6 +43,7 @@ pub struct TerminalView<'a, Message> {
     size: f32,
     colors: Colors,
     on_resize: Box<dyn Fn(Size) -> Message + 'a>,
+    on_open: Box<dyn Fn(String) -> Message + 'a>,
 }
 
 impl<'a, Message> TerminalView<'a, Message> {
@@ -50,6 +54,7 @@ impl<'a, Message> TerminalView<'a, Message> {
         size: f32,
         colors: Colors,
         on_resize: impl Fn(Size) -> Message + 'a,
+        on_open: impl Fn(String) -> Message + 'a,
     ) -> Self {
         Self {
             id: widget::Id::new(id),
@@ -58,7 +63,25 @@ impl<'a, Message> TerminalView<'a, Message> {
             size,
             colors,
             on_resize: Box::new(on_resize),
+            on_open: Box::new(on_open),
         }
+    }
+
+    /// The file location under `point`: its screen row, its columns and
+    /// the location itself.
+    fn link_at(
+        &self,
+        point: Point,
+        cell: (f32, f32),
+    ) -> Option<(usize, std::ops::Range<usize>, String)> {
+        let term = self.terminal.term.lock();
+        let offset = term.grid().display_offset();
+        let (at, _) = self.grid_point(point, cell, offset);
+        let row = &term.grid()[at.line];
+        let chars: Vec<char> = (0..term.columns()).map(|c| row[Column(c)].c).collect();
+        let (columns, location) = bia_core::text::location_at(&chars, at.column.0)?;
+        let screen_row = (at.line.0 + offset as i32) as usize;
+        Some((screen_row, columns, location))
     }
 
     fn cell(&self, cache: &mut Cache) -> (f32, f32) {
@@ -98,6 +121,8 @@ struct State {
     focused: bool,
     selecting: bool,
     modifiers: keyboard::Modifiers,
+    /// The location under the mouse while Ctrl is held.
+    link: Option<(usize, std::ops::Range<usize>, String)>,
     cache: RefCell<Cache>,
 }
 
@@ -123,8 +148,9 @@ fn is_app_shortcut(
     physical: keyboard::key::Physical,
     mods: keyboard::Modifiers,
 ) -> bool {
-    // Ctrl+` hides the terminal on every system (see `keys::shortcut`).
-    if mods.control() && key.to_latin(physical) == Some('`') {
+    // Ctrl+` hides the terminal and Ctrl+Shift+` opens another, on every
+    // system (see `keys::shortcut`).
+    if mods.control() && crate::keys::is_backquote(key, physical) {
         return true;
     }
     if !mods.command() {
@@ -187,6 +213,23 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {
         let state = tree.state.downcast_mut::<State>();
         let bounds = layout.bounds();
         let cell = self.cell(&mut state.cache.borrow_mut());
+        if let Event::Keyboard(keyboard::Event::ModifiersChanged(m)) = event {
+            state.modifiers = *m;
+        }
+        if matches!(
+            event,
+            Event::Mouse(mouse::Event::CursorMoved { .. })
+                | Event::Keyboard(keyboard::Event::ModifiersChanged(_))
+        ) {
+            let link = cursor
+                .position_in(bounds)
+                .filter(|_| state.modifiers.command() && !state.selecting)
+                .and_then(|point| self.link_at(point, cell));
+            if link.as_ref().map(|l| (l.0, &l.1)) != state.link.as_ref().map(|l| (l.0, &l.1)) {
+                state.link = link;
+                shell.request_redraw();
+            }
+        }
         match event {
             Event::Window(window::Event::RedrawRequested(_)) => {
                 // Fit the grid to the panel.
@@ -198,7 +241,6 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {
                     shell.publish((self.on_resize)(size));
                 }
             }
-            Event::Keyboard(keyboard::Event::ModifiersChanged(m)) => state.modifiers = *m,
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key,
                 physical_key,
@@ -246,6 +288,14 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {
                     return;
                 };
                 state.focused = true;
+                if state.modifiers.command()
+                    && let Some((.., location)) = self.link_at(point, cell)
+                {
+                    state.link = None;
+                    shell.publish((self.on_open)(location));
+                    shell.capture_event();
+                    return;
+                }
                 state.selecting = true;
                 let mut term = self.terminal.term.lock();
                 let (at, side) = self.grid_point(point, cell, term.grid().display_offset());
@@ -304,13 +354,15 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {
 
     fn mouse_interaction(
         &self,
-        _tree: &widget::Tree,
+        tree: &widget::Tree,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        if cursor.is_over(layout.bounds()) {
+        if tree.state.downcast_ref::<State>().link.is_some() && cursor.is_over(layout.bounds()) {
+            mouse::Interaction::Pointer
+        } else if cursor.is_over(layout.bounds()) {
             mouse::Interaction::Text
         } else {
             mouse::Interaction::None
@@ -434,6 +486,15 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalView<'_, Message> {
             }
             for (point, paragraph, color) in &runs {
                 renderer.fill_paragraph(paragraph, *point, *color, bounds);
+            }
+            if let Some((row, columns, _)) = &state.link {
+                let start = at(*row, columns.start);
+                let width = (columns.end - columns.start) as f32 * cw;
+                let line = Rectangle::new(
+                    Point::new(start.x, start.y + ch - 2.0),
+                    UiSize::new(width, 1.0),
+                );
+                fill(renderer, line, c.accent);
             }
         });
         // The cursor, over the text.

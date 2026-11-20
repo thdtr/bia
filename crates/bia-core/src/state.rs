@@ -15,12 +15,23 @@ use std::path::{Path, PathBuf};
 /// Folders remembered, most recent first.
 const MAX_SESSIONS: usize = 20;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct State {
     pub last_folder: Option<PathBuf>,
     /// Most recent first.
     pub sessions: Vec<Session>,
+    /// How the window was arranged last time.
+    pub layout: Layout,
+}
+
+/// Sizes you set by dragging, and panels you hid. `None` is BIA's default.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Layout {
+    pub sidebar_width: Option<f32>,
+    pub sidebar_hidden: bool,
+    pub terminal_height: Option<f32>,
 }
 
 /// The open files of one folder.
@@ -111,7 +122,8 @@ mod tests {
         let dir = scratch("roundtrip");
         let file = dir.join("state.json");
         assert_eq!(State::load(&file), State::default());
-        let state = State { last_folder: Some(dir.clone()), sessions: Vec::new() };
+        let state =
+            State { last_folder: Some(dir.clone()), sessions: Vec::new(), ..State::default() };
         state.save(&file).unwrap();
         assert_eq!(State::load(&file), state);
         assert_eq!(State::load(&file).last_folder(), Some(dir.as_path()));
@@ -126,7 +138,11 @@ mod tests {
         fs::write(&file, "{ not json").unwrap();
         assert_eq!(State::load(&file), State::default());
 
-        let gone = State { last_folder: Some(dir.join("deleted")), sessions: Vec::new() };
+        let gone = State {
+            last_folder: Some(dir.join("deleted")),
+            sessions: Vec::new(),
+            ..State::default()
+        };
         assert_eq!(gone.last_folder(), None);
         let _ = fs::remove_dir_all(&dir);
     }

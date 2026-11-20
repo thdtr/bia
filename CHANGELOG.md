@@ -6,6 +6,29 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Several terminals, each in a tab at the top of the panel. `` Ctrl+Shift+` `` or the +
+  button opens another, × closes it, and `exit` closes it too. On Linux the tab shows
+  the program running in it.
+- Ctrl+click on a file location printed in the terminal, like `src/main.rs:42:7` or
+  `src/app.ts(12,5)`, opens the file at that line.
+- On Linux and macOS, BIA asks before quitting or closing a terminal while a program
+  is still running in it.
+- Two files side by side. `Ctrl+\` or the button at the right of the tabs moves the
+  current tab to the other side.
+- A button to hide the sidebar, and one in the status bar to bring it back.
+- Drag the edge of the sidebar, or the top of the terminal panel, to resize them. BIA
+  remembers the sizes.
+- Links to other files in the Markdown preview open them in BIA.
+
+### Changed
+
+- The terminal panel sits under the editor and leaves the sidebar its full height.
+- The Markdown preview opens in a tab beside the file, which you can close like any
+  other tab.
+- Wide tables in the Markdown preview scroll sideways instead of being cut off.
+
 ## [0.4.0] - 2026-11-17
 
 ### Changed

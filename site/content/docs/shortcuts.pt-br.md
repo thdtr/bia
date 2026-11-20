@@ -78,9 +78,11 @@ Desfazer e refazer agrupam as alterações por palavra.
 | Mostrar ou esconder a barra lateral | <kbd>Ctrl+B</kbd> | <kbd>⌘B</kbd> |
 | Prévia de Markdown | <kbd>Ctrl+Shift+V</kbd> | <kbd>⌘⇧V</kbd> |
 | Mostrar ou esconder o terminal | <kbd>Ctrl+`</kbd> | <kbd>⌃`</kbd> |
+| Novo terminal | <kbd>Ctrl+Shift+`</kbd> | <kbd>⌃⇧`</kbd> |
+| Levar a aba para o outro lado | <kbd>Ctrl+\</kbd> | <kbd>⌘\</kbd> |
 | Fonte maior / menor / original | <kbd>Ctrl+=</kbd> / <kbd>Ctrl+-</kbd> / <kbd>Ctrl+0</kbd> | <kbd>⌘=</kbd> / <kbd>⌘-</kbd> / <kbd>⌘0</kbd> |
 
-No terminal, <kbd>Ctrl+Shift+C</kbd> e <kbd>Ctrl+Shift+V</kbd> copiam e colam, e as outras teclas com <kbd>Ctrl</kbd> vão para o programa.
+No terminal, <kbd>Ctrl+Shift+C</kbd> e <kbd>Ctrl+Shift+V</kbd> copiam e colam, e as outras teclas com <kbd>Ctrl</kbd> vão para o programa. <kbd>Ctrl</kbd>+clique num caminho abre o arquivo.
 
 Em teclados Mac sem a tecla <kbd>⌦</kbd>, use <kbd>Fn+Delete</kbd>.
 

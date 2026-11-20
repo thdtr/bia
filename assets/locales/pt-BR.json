@@ -85,5 +85,18 @@
   "close.discard": "Descartar",
   "conflict.message": "{name} mudou no disco depois que foi aberto.",
   "conflict.overwrite": "Sobrescrever",
-  "conflict.reload": "Usar a versão do disco"
+  "conflict.reload": "Usar a versão do disco",
+  "notice.not_found": "{path} não foi encontrado",
+  "busy.quit": "Ainda tem um programa rodando no terminal. Se você sair, ele vai ser encerrado.",
+  "busy.terminal": "Ainda tem um programa rodando neste terminal. Se você fechar, ele vai ser encerrado.",
+  "busy.quit_anyway": "Sair mesmo assim",
+  "busy.close_anyway": "Fechar mesmo assim",
+  "terminal.new": "Novo terminal",
+  "terminal.close": "Fechar terminal",
+  "terminal.hide": "Ocultar terminal",
+  "sidebar.toggle": "Barra lateral",
+  "sidebar.hide": "Ocultar barra lateral",
+  "tabs.split": "Mover para a direita",
+  "tabs.unsplit": "Mover para a esquerda",
+  "tabs.preview": "Prévia de {name}"
 }

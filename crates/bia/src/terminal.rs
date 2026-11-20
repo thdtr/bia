@@ -1,4 +1,4 @@
-//! The terminal panel: a shell on a pseudo-terminal, read and parsed by
+//! The terminal panel: shells on pseudo-terminals, each read and parsed by
 //! `alacritty_terminal` on its own thread, and the bytes keys turn into.
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
@@ -13,7 +13,7 @@ use iced::keyboard::{Key, Modifiers};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// What the terminal thread tells the app.
@@ -30,8 +30,12 @@ pub enum TermEvent {
     Exit,
 }
 
+/// Sends a terminal's events to the app, tagged with the terminal's id.
 #[derive(Clone)]
-pub struct Listener(UnboundedSender<TermEvent>);
+pub struct Listener {
+    id: u64,
+    events: UnboundedSender<(u64, TermEvent)>,
+}
 
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
@@ -43,7 +47,7 @@ impl EventListener for Listener {
             Event::Exit | Event::ChildExit(_) => TermEvent::Exit,
             _ => return,
         };
-        let _ = self.0.unbounded_send(event);
+        let _ = self.events.unbounded_send((self.id, event));
     }
 }
 
@@ -68,19 +72,38 @@ impl Dimensions for Size {
     }
 }
 
+/// How often a terminal's tab looks at which program runs in front.
+pub const LOOK_EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+
 /// Lines kept above the screen.
 const SCROLLBACK: usize = 10_000;
 
 pub struct Terminal {
+    pub id: u64,
     pub term: Arc<FairMutex<Term<Listener>>>,
     sender: EventLoopSender,
     pub size: Size,
+    /// The title a program set, or the shell's name.
     pub title: String,
+    /// The program running in front (`zsh`, `cargo`), where the system
+    /// tells. The tab shows it instead of the title.
+    pub program: Option<String>,
+    looked_at: std::time::Instant,
+    stale: bool,
+    /// The folder the shell started in.
+    pub dir: PathBuf,
+    /// The shell's process id, where the system lets us look at it.
+    pid: Option<u32>,
 }
 
 impl Terminal {
     /// Starts the user's shell in `dir`.
-    pub fn spawn(dir: &Path, size: Size, events: UnboundedSender<TermEvent>) -> io::Result<Self> {
+    pub fn spawn(
+        id: u64,
+        dir: &Path,
+        size: Size,
+        events: UnboundedSender<(u64, TermEvent)>,
+    ) -> io::Result<Self> {
         let env = HashMap::from([
             ("TERM".to_owned(), "xterm-256color".to_owned()),
             ("COLORTERM".to_owned(), "truecolor".to_owned()),
@@ -93,14 +116,76 @@ impl Terminal {
             #[cfg(windows)]
             escape_args: true,
         };
-        let pty = tty::new(&options, window_size(size), 0)?;
-        let listener = Listener(events);
+        let pty = tty::new(&options, window_size(size), id)?;
+        #[cfg(unix)]
+        let pid = Some(pty.child().id());
+        #[cfg(not(unix))]
+        let pid = None;
+        let listener = Listener { id, events };
         let config = Config { scrolling_history: SCROLLBACK, ..Config::default() };
         let term = Arc::new(FairMutex::new(Term::new(config, &size, listener.clone())));
         let event_loop = EventLoop::new(Arc::clone(&term), listener, pty, false, false)?;
         let sender = event_loop.channel();
         event_loop.spawn();
-        Ok(Self { term, sender, size, title: String::new() })
+        Ok(Self {
+            id,
+            term,
+            sender,
+            size,
+            title: shell_name(),
+            program: None,
+            looked_at: std::time::Instant::now() - LOOK_EVERY,
+            stale: false,
+            dir: dir.to_path_buf(),
+            pid,
+        })
+    }
+
+    /// The name for the tab.
+    pub fn name(&self) -> &str {
+        self.program.as_deref().unwrap_or(&self.title)
+    }
+
+    /// Looks again at which program runs in front, at most a few times a
+    /// second, since output can come thousands of times a second. Returns
+    /// `true` when it's too soon, and the app should ask again in a moment.
+    pub fn look_at_program(&mut self) -> bool {
+        if self.looked_at.elapsed() < LOOK_EVERY {
+            self.stale = true;
+            return true;
+        }
+        self.looked_at = std::time::Instant::now();
+        self.stale = false;
+        self.program = self.pid.and_then(front_program);
+        false
+    }
+
+    /// Output came while it was too soon to look: look now.
+    pub fn look_again(&mut self) {
+        if self.stale {
+            self.looked_at = std::time::Instant::now() - LOOK_EVERY;
+            self.look_at_program();
+        }
+    }
+
+    /// The folder the shell is in now. Only Linux tells; elsewhere it's
+    /// the folder it started in.
+    pub fn cwd(&self) -> PathBuf {
+        #[cfg(target_os = "linux")]
+        if let Some(pid) = self.pid
+            && let Ok(dir) = std::fs::read_link(format!("/proc/{pid}/cwd"))
+        {
+            return dir;
+        }
+        self.dir.clone()
+    }
+
+    /// A program other than the shell is running in front (a build, a
+    /// server, an editor), so closing the terminal would stop it. Windows
+    /// doesn't say, so there it's always `false`.
+    pub fn busy(&self) -> bool {
+        let Some(pid) = self.pid else { return false };
+        foreground_job(pid)
     }
 
     pub fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
@@ -147,6 +232,129 @@ impl Terminal {
 impl Drop for Terminal {
     fn drop(&mut self) {
         let _ = self.sender.send(Msg::Shutdown);
+    }
+}
+
+/// The shell's name, for the tab before any program sets a title.
+fn shell_name() -> String {
+    let shell = std::env::var_os("SHELL").or_else(|| std::env::var_os("ComSpec"));
+    shell
+        .as_deref()
+        .map(Path::new)
+        .and_then(Path::file_stem)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "shell".to_owned())
+}
+
+/// Whether the terminal of shell `pid` has a foreground process group
+/// other than the shell's own.
+#[cfg(target_os = "linux")]
+fn foreground_job(pid: u32) -> bool {
+    // Fields after the command name: state, ppid, pgrp, session, tty, tpgid.
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
+    let Some((_, fields)) = stat.rsplit_once(')') else { return false };
+    let fields: Vec<&str> = fields.split_whitespace().collect();
+    match (fields.get(2), fields.get(5)) {
+        (Some(group), Some(front)) => front.parse::<i64>().is_ok_and(|f| f > 0) && group != front,
+        _ => false,
+    }
+}
+
+/// The name of the program in front of shell `pid`'s terminal.
+#[cfg(target_os = "linux")]
+fn front_program(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_, fields) = stat.rsplit_once(')')?;
+    let front: i64 = fields.split_whitespace().nth(5)?.parse().ok()?;
+    let target = if front > 0 { front.to_string() } else { pid.to_string() };
+    let name = std::fs::read_to_string(format!("/proc/{target}/comm")).ok()?;
+    Some(name.trim().to_owned()).filter(|n| !n.is_empty())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn front_program(_pid: u32) -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn foreground_job(pid: u32) -> bool {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "pgid=,tpgid=", "-p", &pid.to_string()])
+        .output();
+    let Ok(out) = out else { return false };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut numbers = text.split_whitespace().map(|n| n.parse::<i64>().unwrap_or(0));
+    match (numbers.next(), numbers.next()) {
+        (Some(group), Some(front)) => front > 0 && group != front,
+        _ => false,
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn foreground_job(_pid: u32) -> bool {
+    false
+}
+
+/// The terminals in the panel, in the order of their tabs.
+#[derive(Default)]
+pub struct Terminals {
+    pub list: Vec<Terminal>,
+    /// Index of the terminal in front.
+    pub active: usize,
+    /// The panel is showing. Hidden terminals keep running.
+    pub open: bool,
+    /// A [`Terminal::look_again`] is on its way.
+    pub look_scheduled: bool,
+    next_id: u64,
+}
+
+impl Terminals {
+    pub fn active(&self) -> Option<&Terminal> {
+        self.list.get(self.active)
+    }
+
+    pub fn get_mut(&mut self, id: u64) -> Option<&mut Terminal> {
+        self.list.iter_mut().find(|t| t.id == id)
+    }
+
+    pub fn get(&self, id: u64) -> Option<&Terminal> {
+        self.list.iter().find(|t| t.id == id)
+    }
+
+    pub fn next_id(&mut self) -> u64 {
+        self.next_id += 1;
+        self.next_id
+    }
+
+    /// Adds a terminal and brings it to the front.
+    pub fn push(&mut self, terminal: Terminal) {
+        self.list.push(terminal);
+        self.active = self.list.len() - 1;
+        self.open = true;
+    }
+
+    /// Closes terminal `id`. The one to its left comes to the front, and
+    /// the panel hides when none are left.
+    pub fn remove(&mut self, id: u64) {
+        let Some(i) = self.list.iter().position(|t| t.id == id) else { return };
+        self.list.remove(i);
+        if self.active >= i && self.active > 0 {
+            self.active -= 1;
+        }
+        if self.list.is_empty() {
+            self.open = false;
+        }
+    }
+
+    pub fn select(&mut self, id: u64) {
+        if let Some(i) = self.list.iter().position(|t| t.id == id) {
+            self.active = i;
+        }
+    }
+
+    /// Some terminal runs a program that closing BIA would stop.
+    pub fn any_busy(&self) -> bool {
+        self.list.iter().any(Terminal::busy)
     }
 }
 

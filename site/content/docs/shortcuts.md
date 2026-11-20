@@ -78,9 +78,11 @@ Undo and redo group changes by word.
 | Show or hide the sidebar | <kbd>Ctrl+B</kbd> | <kbd>⌘B</kbd> |
 | Markdown preview | <kbd>Ctrl+Shift+V</kbd> | <kbd>⌘⇧V</kbd> |
 | Show or hide the terminal | <kbd>Ctrl+`</kbd> | <kbd>⌃`</kbd> |
+| New terminal | <kbd>Ctrl+Shift+`</kbd> | <kbd>⌃⇧`</kbd> |
+| Move the tab to the other side | <kbd>Ctrl+\</kbd> | <kbd>⌘\</kbd> |
 | Bigger / smaller / original font | <kbd>Ctrl+=</kbd> / <kbd>Ctrl+-</kbd> / <kbd>Ctrl+0</kbd> | <kbd>⌘=</kbd> / <kbd>⌘-</kbd> / <kbd>⌘0</kbd> |
 
-In the terminal, <kbd>Ctrl+Shift+C</kbd> and <kbd>Ctrl+Shift+V</kbd> copy and paste, and the other <kbd>Ctrl</kbd> keys go to the program.
+In the terminal, <kbd>Ctrl+Shift+C</kbd> and <kbd>Ctrl+Shift+V</kbd> copy and paste, and the other <kbd>Ctrl</kbd> keys go to the program. <kbd>Ctrl</kbd>+click on a file location opens it.
 
 On Mac keyboards without a <kbd>⌦</kbd> key, press <kbd>Fn+Delete</kbd>.
 
