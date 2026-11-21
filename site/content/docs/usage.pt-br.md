@@ -29,6 +29,7 @@ bia [CAMINHO]...
 | `bia src/main.rs:42` | Abre o arquivo na linha 42. |
 | `bia src/main.rs:42:7` | Abre o arquivo na linha 42, coluna 7. |
 | `bia --new` | Abre uma janela nova, vazia. |
+| `bia --foreground` | Mantém o BIA preso ao terminal. Sem isso, o `bia` devolve o prompt na hora e fechar o terminal não fecha o BIA. |
 | `bia --version` | Mostra a versão. |
 | `bia --help` | Mostra um resumo de uso. |
 

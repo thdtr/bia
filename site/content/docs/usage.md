@@ -29,6 +29,7 @@ bia [PATH]...
 | `bia src/main.rs:42` | Opens the file at line 42. |
 | `bia src/main.rs:42:7` | Opens the file at line 42, column 7. |
 | `bia --new` | Opens a new window with nothing in it. |
+| `bia --foreground` | Keeps BIA attached to the terminal. Without it, `bia` gives the prompt back right away and closing the terminal leaves BIA open. |
 | `bia --version` | Prints the version. |
 | `bia --help` | Prints a summary of the usage. |
 

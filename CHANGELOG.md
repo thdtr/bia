@@ -6,6 +6,11 @@ Notable changes to BIA are listed here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- On Linux and macOS, `bia` gives the terminal back right away, like `code .`, and
+  closing the terminal leaves BIA open. `bia --foreground` keeps it attached.
+
 ## [0.5.0] - 2026-11-20
 
 The first beta. Your files are safe, but you may still find bugs, and shortcuts or
